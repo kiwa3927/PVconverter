@@ -1,0 +1,36 @@
+C++/Tk - a complete C++ interface to the Tk GUI toolkit.
+
+Copyright (C) 2004-2006, Maciej Sobczak
+
+---
+
+You should see the following directories here:
+
+- base     - contains common files for Tk and all extensions
+- doc      - contains a short documentation for the library
+- test     - tests used for development - use them for regression testing
+             if you want to modify the library
+- examples - some simple examples to show C++/Tk basics
+
+The C++/Tk itself consists of these files:
+- cpptk.h           - to be included in your own files
+- cpptk.cc          - to be compiled and linked with your code
+- cpptkconstants.x  - not compilable
+- cpptkoptions.x    - not compilable
+- base/cpptkbase.h  - included automatically by Tk and all extensions
+- base/cpptkbase.cc - to be compiled and linked with your code
+
+(you may also wish to make your own archive or shared library from
+the *.cc files listed above)
+
+In order to compile the tests and the examples you may need to change the
+compiler options to fit your particular environment (different paths to the
+Tcl and Tk headers and libs, another compiler, etc.)
+
+Please see doc.html for instructions how to compile your own programs.
+The Makefile in the examples directory can help, too.
+
+The library was written under Unix, but works pretty well on MS Windows and
+may also work on Macs.
+
+Anyway - have fun! :-)

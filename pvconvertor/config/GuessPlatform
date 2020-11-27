@@ -1,0 +1,67 @@
+#! /bin/sh -f
+
+PACKAGE=""
+PROCESSOR=""
+
+#############################################################################
+# get os name and version
+#############################################################################
+if [ -x /sbin/uname ]; then
+    OSNAME=`/sbin/uname`
+elif [ -x /bin/uname ]; then
+    OSNAME=`/bin/uname`
+else
+    OSNAME=`/uname`
+fi
+
+
+#############################################################################
+# Sun UNIX
+#############################################################################
+if [ $OSNAME = "SunOS" ]; then
+    PACKAGE="sunos"
+fi
+
+
+#############################################################################
+# HP UNIX
+#############################################################################
+if [ $OSNAME = "HP-UX" ]; then
+    PACKAGE="hpux"
+fi
+
+
+#############################################################################
+# Linux
+#############################################################################
+if [ $OSNAME = "Linux" ]; then
+    PACKAGE="linux"
+	PROCESSOR=`uname -m`
+fi
+
+
+#############################################################################
+# The PLATFORM is fomatted in "package-kernel-processor"
+#############################################################################
+PLATFORM=""
+if [ "$PACKAGE" != "" ]; then
+    PLATFORM="$PACKAGE"
+fi
+
+if [ "$PROCESSOR" != "" ] && [ "$PROCESSOR" != "unknown" ]; then
+    if [ "$PLATFORM" != "" ]; then
+        PLATFORM="$PLATFORM"-
+    fi
+    PLATFORM="$PLATFORM""$PROCESSOR"
+fi
+
+if [ "$1" = "-processor" ]; then
+	echo "$PROCESSOR"
+else
+if [ "$PLATFORM" != "" ]; then
+    echo "$PLATFORM"
+else
+    echo "unknown"
+fi
+fi
+

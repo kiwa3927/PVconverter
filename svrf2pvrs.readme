@@ -1,0 +1,167 @@
+**************************************************************************************
+***                              SVRF2PVRS convertor                              **** 
+**************************************************************************************
+
+The convertor can convert Calibre SVRF & TVF formats to PVRS & TRS formats.
+Input svrf2pvrs in command line to get usage.
+
+Before you use SVRF2PVRS, please make sure your rule-deck can be parsed by Calibre at each branch.
+This document records which statements can't be converted by SVRF2PVRS and how can we resolve them.
+
+1 
+There may be many branches in a rule-deck controlled by "#IFDEF�� #ELSE��#ENDIF". 
+Calibre only parses the opened branches. But as a convertor, svrf2pvrs has to convert all the branches of the rule-deck.
+So convertor is based on a fundamental premise: The rule-deck has no error itself and Calibre could work well at each branch.
+If there are errors in the rule-deck, convertor will also report errors.
+
+For example:
+
+1.1 
+Convertor can't convert non-SVRF statement. 
+If there are non-SVRF statement��we should put them into a "svrf error" statement. 
+
+For example: 
+The following statements are not allowed. Even Calibre can't parse it if this branch is opened. 
+However, if this branch is not open, Calibre will not parse it and work well. 
+
+#IFDEF VOL 33
+#IFDEF VOL 18
+THESE TWO OPTIONS SHOULD NOT BE OPENED TOGETHER
+#ENDIF
+#ENDIF
+
+Svrf2pvrs has to parse it, and an error will be reported.
+If we put the non-SVRF statement into "svrf error" statement, convertor will work well.
+
+#IFDEF VOL 33
+#IFDEF VOL 18
+SVRF ERROR "THESE TWO OPTIONS SHOULD NOT BE OPENED TOGETHER"
+#ENDIF
+#ENDIF
+
+1.2
+If "#IFDEF" or "#ENDIF" is written in comments, convertor will report an error. 
+For example:
+
+#IFDEF ERCCHECK TRUE
+/*
+......
+ERC RULE CHECKS
+......
+#ENDIF
+*/
+
+If the branch is opened. Calibre can parse it. But if it is not opened, an error will be reported.
+Convertor can't deal with it because the rule-deck has problem itself.
+
+We should modify the rule-deck like this:
+/*
+#IFDEF ERCCHECK TRUE
+......
+ERC RULE CHECKS
+......
+#ENDIF
+*/
+
+2
+If there are unsupported SVRF statements, convertor will report a warning and ignore them.
+Unsupported statements include DRC run-time TVF, PERC, PEX, RET, ICTRACE, MASK and OPC (OPC BIAS is supported)
+Convertor only supports 7 DFM rules. They are:
+DFM COPY
+DFM NARAC
+DFM PROPERTY
+DFM RDB
+DFM STAMP
+DFM SPACE
+DFM SIZE
+
+3 
+Convertor could not convert a complete SVRF statement if it is separated by "#ifdef��#else��#endif". A statement should be completed in each branch.  
+
+For example: 
+
+In this case, DMACRO defined the property of the devices. It is a part of device statements.The device statement is not complete.
+
+DMACRO mim_prop  seed_layer area_c perimeter_c {
+[
+            PROPERTY C
+            A = area(seed_layer)
+            P = perimeter(seed_layer)  
+            C = A*area_c + P*fringe_c
+]
+#IFDEF METAL4 
+   DEVICE C(MIM) MiM_C MiM_C(POS) M4(NEG)  
+#ENDIF   
+#IFDEF METAL5{
+   DEVICE C(MIM) MiM_C MiM_C(POS) M5(NEG)
+#ENDIF
+CMACRO mim_prop  MiM_C 1.1e-3 1.2e-9
+
+We should complete the statement in each branch like this:
+
+#IFDEF METAL4 
+   DEVICE C(MIM) MiM_C MiM_C(POS) M4(NEG)  
+   CMACRO mim_prop  MiM_C 1.1e-3 1.2e-9
+#ENDIF   
+#IFDEF METAL5{
+   DEVICE C(MIM) MiM_C MiM_C(POS) M5(NEG)
+   CMACRO mim_prop  MiM_C 1.1e-3 1.2e-9
+#ENDIF
+
+4 
+If a macro is not a complete statement, it could not be defined in many branches. 
+For example:
+In this case, the macro mim_prop is a part of a device statement and defined in the two branches.
+Convertor will complete the non-complete statement before convert it to PVRS. So an error of duplicate definitions will be reported.
+
+#IFDEF PROPERTY_C
+DMACRO mim_prop  seed_layer  {
+[
+            PROPERTY C
+            A = area(seed_layer)
+            P = perimeter(seed_layer)  
+            C = A*1.1e-3 + P*1.2e-9
+]#ELSE
+DMACRO mim_prop  seed_layer {
+[
+            PROPERTY A P
+            A = area(seed_layer)
+            P = perimeter(seed_layer)  
+]
+#ENDIF 
+DEVICE C(MIM) MiM_C MiM_C(POS) M5(NEG)
+CMACRO mim_prop  MiM_C 
+
+Because the macro name is duplicate,we have to change the names of the macros.
+And we should also make a branch for the device calling the macro like this:
+
+DMACRO mim_prop_c  seed_layer  {
+[
+            PROPERTY C
+            A = area(seed_layer)
+            P = perimeter(seed_layer)  
+            C = A*1.1e-3 + P*1.2e-9
+]
+DMACRO mim_prop_ap  seed_layer {
+[
+            PROPERTY A P
+            A = area(seed_layer)
+            P = perimeter(seed_layer)  
+]
+#IFDEF PROPERTY_C
+DEVICE C(MIM) MiM_C MiM_C(POS) M5(NEG)
+CMACRO mim_prop_c  MiM_C 
+#ELSE
+DEVICE C(MIM) MiM_C MiM_C(POS) M5(NEG)
+CMACRO mim_prop_ap  MiM_C 
+#ENDIF
+
+5
+When you convert tvf format rule to trs rule using "-trs" option, you should know 
+the following issues:
+5.1 
+If tvf rule file contains the usage of consecutive svrf layer operation keywords 
+more than once, convertor may fail. By default, SVRF2PVRS generates one temporary 
+layer definition for every layer operation command to avoid this case.
+5.2
+For unsupported TVF rules, convertor reports warning and skip them.

@@ -1,0 +1,9 @@
+*************************************************************************************
+***                              SVRF2PVS convertor                              **** 
+*************************************************************************************
+
+The convertor can convert Calibre SVRF & TVF formats to Cadence PVS format.
+Input svrf2pvs.pl in command line to get usage.
+
+Before you use SVRF2PVS, please make sure your rule-deck can be parsed by Calibre at each branch.
+

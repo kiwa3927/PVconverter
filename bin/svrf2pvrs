@@ -1,0 +1,229 @@
+#!/bin/bash -f
+#
+# Script to invoke the command binary.
+#
+
+GussPlatform()
+{
+	KERNEL=""
+    PACKAGE=""
+    PROCESSOR=""
+
+	# get os name and version
+	if [ -x /sbin/uname ]; then
+		OSNAME=`/sbin/uname`
+		OSVER=`/sbin/uname -r`
+	elif [ -x /bin/uname ]; then
+		OSNAME=`/bin/uname`
+		OSVER=`/bin/uname -r`
+	else
+		OSNAME=`/uname`
+		OSVER=`/uname -r`
+	fi
+
+	# Sun UNIX
+	if [ $OSNAME = "SunOS" ]; then
+		case "$OSVER" in
+			*)
+				KERNEL="sunos"
+				;;
+		esac
+	fi
+
+	# HP UNIX
+	if [ $OSNAME = "HP-UX" ]; then
+		case "$OSVER" in
+			*)
+				KERNEL="hpux"
+				;;
+		esac
+	fi
+
+	# Linux
+	if [ $OSNAME = "Linux" ]; then
+            PACKAGE="linux"
+			case "$OSVER" in
+				2.4*)
+					PACKAGE="linux24"
+					;;
+				2.6*)
+					PACKAGE="linux26"
+					;;
+				*)
+					PACKAGE="linux26"
+					;;
+			esac
+
+		# decide package, kernel and processor
+	    PROCESSOR=`uname -m`
+	fi
+
+	# The PLATFORM is fomatted in "package-kernel-processor"
+	PLATFORM=""
+	if [ "$PACKAGE" != "" ]; then
+		PLATFORM="$PACKAGE"
+	fi
+	if [ "$KERNEL" != "" ]; then
+		if [ "$PLATFORM" != "" ]; then
+			PLATFORM="$PLATFORM"-
+		fi
+		PLATFORM="$PLATFORM""$KERNEL"
+	fi
+
+	if [ "$1" = "32" ]; then
+		PROCESSOR="i686";
+	fi
+
+	if [ "$PROCESSOR" != "" ] && [ "$PROCESSOR" != "unknown" ]; then
+		if [ "$PLATFORM" != "" ]; then
+			PLATFORM="$PLATFORM"-
+		fi
+		PLATFORM="$PLATFORM""$PROCESSOR"
+	fi
+	
+	if [ "$PLATFORM" != "" ]; then
+		echo "$PLATFORM"
+	else
+		echo "unknown"
+	fi
+}
+
+
+# ======================================================================
+# Function:       pvconvertor_GetAbsoluteExecutable
+# ======================================================================
+# Description:    Determine full executable path from partial name
+#                   - the typical usage is to resolve $0
+# Parameters:     absolute, partial or PATH relative name
+# Globals:        pvconvertor_EXEPATH with full path of executable
+# Return value:   0 if full path was resolved, 1 otherwise
+#
+
+pvconvertor_GetAbsoluteExecutable()
+{
+    case $1 in
+	/*)
+		# handle absolute path
+		pvconvertor_EXEPATH="$1" ;
+		return 0
+		;;
+	*/*)
+		# handle relative path
+		pvconvertor_EXEPATH="`pwd`/$1" ;
+		return 0
+		;;
+	*)
+		# search PATH environment variable
+		for element in `echo $PATH | sed 's,:, ,g'` ; do
+		case $element in
+		/*)
+			if [ -x ${element}/$1 ]; then
+				pvconvertor_EXEPATH="${element}/$1";
+				return 0;
+			fi;
+			;;
+		*)
+			#handle relateive pathes (such as '.')
+			if [ -x ${element}/$1 ]; then
+				pvconvertor_EXEPATH="`pwd`/${element}/$1";
+				return 0;
+			fi;
+			;;
+		esac
+		done
+		;;
+	esac
+
+	return 1
+}
+
+# ======================================================================
+# Function:       pvconvertor_ResolveSymbolicLink
+# ======================================================================
+# Description:    Resolve symbolic link and return true file
+# Parameters:     absolute file name
+# Globals:        pvconvertor_EXEPATH with resolved path (if symbolic link)
+#         and pvconvertor_LINKPATH the last symbolic link;
+# Return value:   0 if the executable is found, 1 otherwise
+#
+pvconvertor_ResolveSymbolicLink()
+{
+    pvconvertor_LINKPATH="`echo $1 | sed -e 's%/\(\./\)*%/%g'`"
+    if [ "`file $1 | awk '{ print $2; }'`" = "symbolic" ] ; then
+    pvconvertor_EXEPATH="`file $1 | awk '{ print $5; }'`"
+    pvconvertor_EXEPATH="`echo ${pvconvertor_EXEPATH} | sed -e 's%\`%%g' `"
+    pvconvertor_EXEPATH="`echo ${pvconvertor_EXEPATH} | sed -e s%\'%%g `"
+
+    # not found the executable yet;
+	return 1;
+	fi
+
+	# find the executable.
+	pvconvertor_EXEPATH=$pvconvertor_LINKPATH
+	return 0
+}
+
+# Get the platform
+	GussPlatform $PLATFORM
+
+# Get the real cmdName
+var_full_path_exe="`which $0`"
+pvconvertor_ResolveSymbolicLink $var_full_path_exe
+var_full_path_exe="$pvconvertor_EXEPATH"
+if [ "$var_full_path_exe" = "$PVCONVERTOR_HOME/bin/pvconvertorstartup" ]; then
+	var_full_path_exe=$pvconvertor_LINKPATH
+fi
+cmdName="`basename $var_full_path_exe`"
+
+# Get the pvconvertor_home
+var_pvconvertor_home="${PVCONVERTOR_HOME}"
+if [ "$var_pvconvertor_home" = "" ]; then
+	pvconvertor_GetAbsoluteExecutable $var_full_path_exe
+
+	if [ "$?" = 1 ]; then
+	echo "$0 : unable to determine the full executable path from $0"
+	exit 1
+	fi
+
+	pvconvertor_ResolveSymbolicLink $pvconvertor_EXEPATH
+	pvconvertor_EXEPATH=${pvconvertor_LINKPATH}
+
+	PVCONVERTOR_HOME=`dirname $pvconvertor_EXEPATH`
+	PVCONVERTOR_HOME=`dirname $PVCONVERTOR_HOME`
+fi
+
+# Dump the current environment
+SVRF2PVRS_ENV=`env`
+export SVRF2PVRS_ENV
+
+# for in 64 run 32
+if [ ! -d "$PVCONVERTOR_HOME/pvconvertor/platform/$PLATFORM" ]; then
+	GussPlatform 32
+fi
+
+# Set Tcl PATH
+TCL_LIBRARY=$PVCONVERTOR_HOME/pvconvertor/share/library/
+export TCL_LIBRARY
+
+# Set Tk PATH
+TK_LIBRARY=$PVCONVERTOR_HOME/pvconvertor/share/tk_library/
+export TK_LIBRARY
+
+# Set the path to include the shared libraries
+if [ "$LD_LIBRARY_PATH" ]; then
+	LD_LIBRARY_PATH=$PVCONVERTOR_HOME/pvconvertor/share/$PLATFORM/lib:/usr/local/lib64:/usr/local/lib::$LD_LIBRARY_PATH
+else
+	LD_LIBRARY_PATH=$PVCONVERTOR_HOME/pvconvertor/share/$PLATFORM/lib:/usr/local/lib64:/usr/local/lib
+fi
+export LD_LIBRARY_PATH
+
+# export
+SVRF2PVRS_EXE_PATH="$PVCONVERTOR_HOME/bin/"
+export SVRF2PVRS_EXE_PATH
+
+# Parse the command and execute it
+binName="$PVCONVERTOR_HOME/pvconvertor/platform/$PLATFORM/bin/$cmdName"
+echo "execute cmd : $binName"
+
+exec $binName "$@"
+exit 0
