@@ -33,7 +33,7 @@ Option:
 
 
 
-![](D:\App_Data\Desktop\images\fig1.png)
+![](/images/fig1.png)
 
 <center>Fig.1 PVco nverter Graphical User Interface</center>
 
