@@ -54,6 +54,8 @@ private:
         }
     };
     std::map<std::string, MACRO_TOKENS> m_mapMacros;
+public:
+    std::map<std::string, hvUInt32> m_macrosParaSizeMap;
 
 private:
     void replaceCMacro(std::list<rcsToken_T>::iterator &iCMacro, MACRO_TOKENS &macro);

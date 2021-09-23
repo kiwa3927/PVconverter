@@ -21,7 +21,7 @@
 #include <utility>
 #include <sstream>
 #include <vector>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include <boost/lexical_cast.hpp>
 #include <iosfwd>
 
@@ -197,9 +197,9 @@ class Expr
 public:
      explicit Expr(std::string const &str, bool starter = true);
      Expr(std::string const &str, std::string const &postfix);
-     Expr(boost::shared_ptr<Command> const &cmd) : cmd_(cmd) {}
+     Expr(std::shared_ptr<Command> const &cmd) : cmd_(cmd) {}
      
-     boost::shared_ptr<Command> getCmd() const { return cmd_; }
+     std::shared_ptr<Command> getCmd() const { return cmd_; }
      std::string getValue() const;
      
      operator std::string() const;
@@ -248,7 +248,7 @@ public:
      
 private:
      std::string str_;
-     boost::shared_ptr<Command> cmd_;
+     std::shared_ptr<Command> cmd_;
 };
 
 
@@ -282,7 +282,7 @@ public:
      virtual void invoke(Params const &) = 0;
 };
 
-std::string addCallback(boost::shared_ptr<CallbackBase> cb);
+std::string addCallback(std::shared_ptr<CallbackBase> cb);
 
 
 void setResult(bool b);
@@ -907,7 +907,7 @@ details::Expr operator<<(std::string const &w, details::Expr const &rhs);
 template <class Functor> std::string callback(Functor f)
 {
      return details::addCallback(
-          boost::shared_ptr<details::CallbackBase>(
+          std::shared_ptr<details::CallbackBase>(
                new details::Callback0<Functor>(f)));
 }
 

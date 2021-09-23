@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <list>
 
 #include "tcl.h"
 #include "rcsTvfCompiler.h"
@@ -20,15 +21,39 @@
 #include "rcstvfpackageprovide.hpp"
 
 bool rcsTVFCompiler_T::m_isInRulecheck    = false;
-char* rcsTVFCompiler_T::m_pTvfArg         = NULL;
-char* rcsTVFCompiler_T::m_pTvfFilename    = const_cast<char*>("");
-char* rcsTVFCompiler_T::m_pSvrfFileName   = const_cast<char*>("");
+std::string rcsTVFCompiler_T::m_pTvfArg         ;
+std::string rcsTVFCompiler_T::m_pTvfFilename    ;
+std::string rcsTVFCompiler_T::m_pSvrfFileName   ;
 Tcl_Interp* rcsTVFCompiler_T::m_pInterp   = NULL;
 
 std::ofstream rcsTVFCompiler_T::m_fSvrf;
 std::map<std::string, std::string, rcsTVFCompiler_T::LTstr> rcsTVFCompiler_T::layermap_g;
 std::map<std::string, std::string, rcsTVFCompiler_T::LTstr> rcsTVFCompiler_T::layermap_l;
 std::map<std::string, std::string, rcsTVFCompiler_T::LTstr> rcsTVFCompiler_T::varmap_g;
+using namespace std;
+
+std::string toPreciseString(double d)
+{
+    char buffer[16] = {0};
+    sprintf(buffer, "%g", d);
+    return std::string(buffer);
+}
+
+void replace_all(std::string &src, const std::string &oldstr, const std::string &newstr)
+{
+    size_t count = 0;
+    size_t index = 0;
+    while (true)
+    {
+        index = src.find(oldstr, index);
+        if (index  == std::string::npos)
+            return;
+
+        ++count;
+        src.replace(index, oldstr.size(), newstr);
+        index += newstr.size();
+    }
+}
 
 int
 rcsTVFCompiler_T::get_global_var_proc(ClientData d, Tcl_Interp *pInterp,
@@ -152,11 +177,102 @@ rcsTVFCompiler_T::blockcomment_proc(ClientData d, Tcl_Interp *interp,
     return TCL_OK;
 }
 
+static void
+_trans2TclStringExpr(std::string &s)
+{
+    // add escap to "
+    std::list<char> l(s.begin(), s.end());
+    for (std::list<char>::iterator it=l.begin(); it!=l.end(); ++it)
+    {
+        switch (*it)
+        {
+            case '\\':
+                ++it;
+                break;
+            case '\"':
+                l.insert(it, '\\');
+                break;
+        }
+    }
+    // if changed
+    if (l.size() != s.size())
+        s.assign(l.begin(), l.end());
+
+    s.insert(s.begin(), '\"');
+    s.insert(s.end(), '\"');
+}
+
+// line 3 cmd {tvf::COMMENT       "123  a   45 { }"}
+// line 4 cmd tvf::COMMENT
+static std::string
+getTclParamStrFromCMDStr(Tcl_Interp *interp, const char *str, const char *pCmd)
+{
+    const char *p = strstr(str, pCmd);
+    // skip white space
+
+    if (p != NULL)
+    {
+        p += strlen(pCmd) + 1; //  1 is space after cmd
+    }
+
+#if 0
+    // skip ws at head
+    while (p != NULL)
+    {
+        if (!std::isspace(*p))
+            break;
+
+        ++p;
+    };
+#endif
+
+    std::string s = p;
+    if (!s.empty() && s[s.size()-1] == '}')
+        s.resize(s.size()-1);
+
+
+    std::string ss = s;
+    _trans2TclStringExpr(ss);
+    if (TCL_OK == Tcl_ExprString(interp, ss.c_str()))
+    {
+        s = Tcl_GetStringResult(interp);
+    }
+
+    return s;
+}
 
 int
 rcsTVFCompiler_T::linecomment_proc(ClientData d, Tcl_Interp *interp,
                                    int argc, const char * argv[])
 {
+    // this if is from compiler
+    if (argc > 1 && m_isInRulecheck && TCL_OK == Tcl_outputCmdFrame(interp))
+    {
+        int nelements;
+        int sclen;
+        const char *str;
+        //const char *str_rulecheck;
+        Tcl_Obj **elements;
+        Tcl_ListObjGetElements(interp, Tcl_GetObjResult(interp), &nelements, &elements);
+
+        if (m_isInRulecheck) // true always
+        {
+            str = Tcl_GetStringFromObj(elements[0], &sclen);
+            //str_rulecheck = Tcl_GetStringFromObj(elements[1], &sclen);
+
+            m_fSvrf << "@" << getTclParamStrFromCMDStr(interp, str, argv[0]) <<"\n";
+#if 0
+            std::cout << "### ###" <<std::endl;
+            std::cout << "FIND  CMD: "<< argv[0] << std::endl;
+            std::cout << "FIND  CMD param size: "<< argc << std::endl;
+            std::cout << "FIND @ CMD: "<< str << std::endl;
+#endif
+        }
+
+        return TCL_OK;
+
+    }
+
     m_fSvrf << "@";
     for( int i = 1; i < argc; ++i )
     {
@@ -276,7 +392,7 @@ int
 rcsTVFCompiler_T::gettvfarg_proc(ClientData d, Tcl_Interp *interp,
                                  int argc, const char * argv[])
 {
-    Tcl_SetResult( interp, m_pTvfArg, NULL );
+    Tcl_SetResult( interp, &m_pTvfArg[0], NULL );
     return TCL_OK;
 }
 
@@ -1509,6 +1625,1177 @@ options:\n\
     return TCL_OK;
 }
 
+const char * n20_measurements = "\
+param_gate__n20__TVF_tmp_1.side = COINCIDENT EDGE param_gate param_sd\n\
+param_gate__n20__TVF_tmp_1.end = NOT COINCIDENT EDGE param_gate param_sd\n\
+param_gate__n20__TVF_tmp_1.side_wx1 = DFM SHIFT EDGE [param_gate__n20__TVF_tmp_1.side] OUTSIDE BY 2*$n20_shift EXTEND BY $wx1\n\
+param_gate__n20__TVF_tmp_1.side1 = DFM SHIFT EDGE [param_gate__n20__TVF_tmp_1.side] OUTSIDE BY $n20_shift\n\
+param_gate__n20__TVF_tmp_1.side_wx1_range = DFM SHIFT EDGE param_gate__n20__TVF_tmp_1.side1 OUTSIDE BY $n20_shift EXTEND PRODUCED BY $wx1\n\
+param_gate__n20__TVF_tmp_1.end_lx1 = DFM SHIFT EDGE [param_gate__n20__TVF_tmp_1.end] OUTSIDE BY 2*$n20_shift EXTEND BY $lx1\n\
+param_gate__n20__TVF_tmp_1.end1 = DFM SHIFT EDGE [param_gate__n20__TVF_tmp_1.end] OUTSIDE BY $n20_shift\n\
+param_gate__n20__TVF_tmp_1.end_lx1_range = DFM SHIFT EDGE param_gate__n20__TVF_tmp_1.end1 OUTSIDE BY $n20_shift EXTEND PRODUCED BY $lx1\n\
+param_gate__n20__TVF_tmp_1.end_lx2 = DFM SHIFT EDGE [param_gate__n20__TVF_tmp_1.end] OUTSIDE BY $n20_shift EXTEND BY $lx2\n\
+param_gate__n20__TVF_tmp_1.end_lx2_range = DFM SHIFT EDGE param_gate__n20__TVF_tmp_1.end OUTSIDE BY $n20_shift EXTEND PRODUCED BY $lx2\n\
+param_gate__n20__TVF_tmp_1.side_shift = DFM SHIFT EDGE [param_gate__n20__TVF_tmp_1.side] outside by $n20_shift\n\
+param_gate__n20__TVF_tmp_1.sdnet = DFM PROPERTY param_sd [ NETID = NETID(param_sd) ]\n\
+param_gate__n20__TVF_tmp_1.sidewx1OD_ext = DFM SPACE param_gate__n20__TVF_tmp_1.side_wx1 param_actvie <= $sod BY EXT BY LAYER param_actvie COUNT <= 3 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.sidewx1OD_enc = DFM SPACE param_gate__n20__TVF_tmp_1.side_wx1 param_actvie <= $sod BY ENC BY LAYER param_actvie COUNT <= 2 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.sidewx1_inOD = DFM COPY (INSIDE EDGE param_gate__n20__TVF_tmp_1.side_wx1 param_actvie) (COIN OUTSIDE EDGE param_gate__n20__TVF_tmp_1.side_wx1 param_actvie)\n\
+param_gate__n20__TVF_tmp_1.endlx12OD_ext = DFM SPACE param_gate__n20__TVF_tmp_1.end_lx1 param_actvie <= $eod BY EXT BY LAYER param_actvie COUNT <= 2 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.endlx12OD_enc = DFM SPACE param_gate__n20__TVF_tmp_1.end_lx1 param_actvie <= $eod BY ENC BY LAYER param_actvie COUNT <= 1 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.endlx1_inOD = DFM COPY (INSIDE EDGE param_gate__n20__TVF_tmp_1.end_lx1 param_actvie) (COIN OUTSIDE EDGE param_gate__n20__TVF_tmp_1.end_lx1 param_actvie)\n\
+param_gate__n20__TVF_tmp_1.sidewx1Well_ext = DFM SPACE param_gate__n20__TVF_tmp_1.side_wx1 param_well <= $swell BY EXT BY LAYER param_well COUNT <= 1 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.sidewx1Well_enc = DFM SPACE param_gate__n20__TVF_tmp_1.side_wx1 param_well <= $swell BY ENC BY LAYER param_well COUNT <= 1 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.sidewx1_inWPE = DFM COPY (INSIDE EDGE param_gate__n20__TVF_tmp_1.side_wx1 param_well) (COIN OUTSIDE EDGE param_gate__n20__TVF_tmp_1.side_wx1 param_well)\n\
+param_gate__n20__TVF_tmp_1.endlx12Well_ext = DFM SPACE param_gate__n20__TVF_tmp_1.end_lx1 param_well <= $ewell BY EXT BY LAYER param_well COUNT <= 1 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.endlx12Well_enc = DFM SPACE param_gate__n20__TVF_tmp_1.end_lx1 param_well <= $ewell BY ENC BY LAYER param_well COUNT <= 1 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.endlx1_inWPE = DFM COPY (INSIDE EDGE param_gate__n20__TVF_tmp_1.end_lx1 param_well) (COIN OUTSIDE EDGE param_gate__n20__TVF_tmp_1.end_lx1 param_well)\n\
+param_gate__n20__TVF_tmp_1.endlx22M0_ext = DFM SPACE param_gate__n20__TVF_tmp_1.end_lx2 param_m0 <= $m0 BY EXT BY LAYER param_m0 COUNT == 0 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.poly_not_cpo = param_poly NOT param_cpo\n\
+param_gate__n20__TVF_tmp_1.sidesh2PO_ext = DFM SPACE param_gate__n20__TVF_tmp_1.side_shift param_gate__n20__TVF_tmp_1.poly_not_cpo <= $pse BY EXT BY LAYER param_gate__n20__TVF_tmp_1.poly_not_cpo COUNT <= 4 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.sidesh2PO_enc = DFM SPACE param_gate__n20__TVF_tmp_1.side_shift param_gate__n20__TVF_tmp_1.poly_not_cpo <= $pse BY ENC BY LAYER param_gate__n20__TVF_tmp_1.poly_not_cpo COUNT <= 5 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.sidesh2OD_enc = DFM SPACE param_gate__n20__TVF_tmp_1.side_shift param_actvie <= $pse BY ENC BY LAYER param_actvie COUNT == 0 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.end2PXE_enc = DFM SPACE param_gate__n20__TVF_tmp_1.end param_gate__n20__TVF_tmp_1.poly_not_cpo <= $pxe BY ENC BY LAYER param_gate__n20__TVF_tmp_1.poly_not_cpo COUNT == 0 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.end2PMET_ext = DFM SPACE param_gate__n20__TVF_tmp_1.end param_pmet <= $pmet BY EXT BY LAYER param_pmet COUNT <= 1 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.end2PMET_enc = DFM SPACE param_gate__n20__TVF_tmp_1.end param_pmet <= $pmet BY ENC BY LAYER param_pmet COUNT <= 1 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.end2PO_enc = DFM SPACE param_gate__n20__TVF_tmp_1.end param_poly <= $pmet BY ENC BY LAYER param_poly COUNT == 0 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.end2M0_ext = DFM SPACE param_gate__n20__TVF_tmp_1.end param_m0 <= $pmet BY EXT BY LAYER param_m0 COUNT == 0 MEASURE ALL\n\
+param_gate__n20__TVF_tmp_1.side_wx1_p = DFM PROPERTY param_gate__n20__TVF_tmp_1.side_wx1_range param_gate__n20__TVF_tmp_1.sidewx1OD_ext param_gate__n20__TVF_tmp_1.sidewx1OD_enc param_gate__n20__TVF_tmp_1.sidewx1_inOD\n\
+            param_gate__n20__TVF_tmp_1.sidewx1Well_ext param_gate__n20__TVF_tmp_1.sidewx1Well_enc param_gate__n20__TVF_tmp_1.sidewx1_inWPE\n\
+                \n\
+            OVERLAP ABUT ALSO MULTI\n\
+        [WRANGE = VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.side_wx1_range),ECMAX(param_gate__n20__TVF_tmp_1.side_wx1_range))]\n\
+        [L_DIR_OD_TOP = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_enc)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_enc)+2*$n20_shift),\n\
+                          3, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1_inOD), ECMAX(param_gate__n20__TVF_tmp_1.sidewx1_inOD), 1) ), VECTOR(ECMAX(param_gate__n20__TVF_tmp_1.side_wx1_range),ECMAX(param_gate__n20__TVF_tmp_1.side_wx1_range)+$wx1 ))]\n\
+        [L_DIR_OD_MID = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_enc)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_enc)+2*$n20_shift),\n\
+                          3, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1_inOD), ECMAX(param_gate__n20__TVF_tmp_1.sidewx1_inOD), 1) ), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.side_wx1_range),ECMAX(param_gate__n20__TVF_tmp_1.side_wx1_range) ))]\n\
+        [L_DIR_OD_BOT = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_enc)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_enc)+2*$n20_shift),\n\
+                          3, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1OD_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1_inOD), ECMAX(param_gate__n20__TVF_tmp_1.sidewx1_inOD), 1) ), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.side_wx1_range)-$wx1,ECMIN(param_gate__n20__TVF_tmp_1.side_wx1_range) ))]\n\
+        [L_DIR_WPE_TOP = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1Well_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1Well_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1Well_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1Well_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1Well_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1Well_enc)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1_inWPE), ECMAX(param_gate__n20__TVF_tmp_1.sidewx1_inWPE), 1) ), VECTOR(ECMAX(param_gate__n20__TVF_tmp_1.side_wx1_range),ECMAX(param_gate__n20__TVF_tmp_1.side_wx1_range)+$wx1 )) ]\n\
+        [L_DIR_WPE_MID = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1Well_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1Well_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1Well_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1Well_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1Well_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1Well_enc)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1_inWPE), ECMAX(param_gate__n20__TVF_tmp_1.sidewx1_inWPE), 1) ), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.side_wx1_range),ECMAX(param_gate__n20__TVF_tmp_1.side_wx1_range) )) ]\n\
+        [L_DIR_WPE_BOT = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1Well_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1Well_ext), EW(param_gate__n20__TVF_tmp_1.sidewx1Well_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1Well_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidewx1Well_enc), EW(param_gate__n20__TVF_tmp_1.sidewx1Well_enc)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidewx1_inWPE), ECMAX(param_gate__n20__TVF_tmp_1.sidewx1_inWPE), 1) ), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.side_wx1_range)-$wx1,ECMIN(param_gate__n20__TVF_tmp_1.side_wx1_range) )) ]\n\
+        \n\
+        \n\
+        \n\
+        \n\
+param_gate__n20__TVF_tmp_1.side_sh_p = DFM PROPERTY param_gate__n20__TVF_tmp_1.side_shift param_gate__n20__TVF_tmp_1.sidesh2PO_ext param_gate__n20__TVF_tmp_1.sidesh2PO_enc param_gate__n20__TVF_tmp_1.sidesh2OD_enc\n\
+            OVERLAP ABUT ALSO MULTI\n\
+        [PSE = SELECT_MERGE_XXY(\n\
+                1, CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_ext), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_ext)+$n20_shift),VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_enc), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_enc)+$n20_shift)), 2, CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_ext), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_ext)+$n20_shift),VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_enc), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_enc)+$n20_shift)), 3, CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_ext), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_ext)+$n20_shift),VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_enc), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_enc)+$n20_shift)),\n\
+                4, CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_ext), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_ext)+$n20_shift),VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_enc), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_enc)+$n20_shift)), 5, CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_ext), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_ext)+$n20_shift),VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_enc), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_enc)+$n20_shift)), 6, CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_ext),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_ext), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_ext)+$n20_shift),VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2PO_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2PO_enc), EW(param_gate__n20__TVF_tmp_1.sidesh2PO_enc)+$n20_shift)),\n\
+                1,VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.sidesh2OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.sidesh2OD_enc), EW(param_gate__n20__TVF_tmp_1.sidesh2OD_enc)+$n20_shift))]\n\
+param_gate__n20__TVF_tmp_1.side_bridge = DFM SHIFT EDGE param_gate__n20__TVF_tmp_1.side outside by $n20_shift\n\
+param_gate__n20__TVF_tmp_1.side_bridge_p = DFM PROPERTY param_gate__n20__TVF_tmp_1.side_bridge param_gate__n20__TVF_tmp_1.side_sh_p param_gate__n20__TVF_tmp_1.side_wx1_p\n\
+            OVERLAP ABUT ALSO MULTI\n\
+        [PSE = VPROPERTY(param_gate__n20__TVF_tmp_1.side_sh_p, PSE)]\n\
+        [WRANGE = VPROPERTY(param_gate__n20__TVF_tmp_1.side_wx1_p, WRANGE)]\n\
+        [L_DIR_OD_TOP = VPROPERTY(param_gate__n20__TVF_tmp_1.side_wx1_p, L_DIR_OD_TOP)]\n\
+        [L_DIR_OD_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.side_wx1_p, L_DIR_OD_MID)]\n\
+        [L_DIR_OD_BOT = VPROPERTY(param_gate__n20__TVF_tmp_1.side_wx1_p, L_DIR_OD_BOT)]\n\
+        [L_DIR_WPE_TOP = VPROPERTY(param_gate__n20__TVF_tmp_1.side_wx1_p, L_DIR_WPE_TOP)]\n\
+        [L_DIR_WPE_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.side_wx1_p, L_DIR_WPE_MID)]\n\
+        [L_DIR_WPE_BOT = VPROPERTY(param_gate__n20__TVF_tmp_1.side_wx1_p, L_DIR_WPE_BOT)]\n\
+        \n\
+        \n\
+        \n\
+        \n\
+param_gate__n20__TVF_tmp_1.side_p = DFM PROPERTY param_gate__n20__TVF_tmp_1.side param_gate__n20__TVF_tmp_1.sdnet param_gate__n20__TVF_tmp_1.side_bridge_p \n\
+            OVERLAP ABUT ALSO MULTI\n\
+        [NETID = NETPROPERTY(param_gate__n20__TVF_tmp_1.sdnet, NETID,1)]\n\
+        [WRANGE = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p,WRANGE)]\n\
+        [L_DIR_OD_TOP = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p,L_DIR_OD_TOP)]\n\
+        [L_DIR_OD_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p,L_DIR_OD_MID)]\n\
+        [L_DIR_OD_BOT = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p,L_DIR_OD_BOT)]\n\
+        [L_DIR_WPE_TOP = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p,L_DIR_WPE_TOP)]\n\
+        [L_DIR_WPE_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p,L_DIR_WPE_MID)]\n\
+        [L_DIR_WPE_BOT = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p,L_DIR_WPE_BOT)]\n\
+        \n\
+        \n\
+        \n\
+        \n\
+param_gate__n20__TVF_tmp_1.end_bridge = DFM SHIFT EDGE param_gate__n20__TVF_tmp_1.end outside by $n20_shift\n\
+param_gate__n20__TVF_tmp_1.end_lx1_p = DFM PROPERTY param_gate__n20__TVF_tmp_1.end_lx1_range param_gate__n20__TVF_tmp_1.endlx12OD_ext param_gate__n20__TVF_tmp_1.endlx12OD_enc param_gate__n20__TVF_tmp_1.endlx1_inOD \n\
+            param_gate__n20__TVF_tmp_1.endlx12Well_ext param_gate__n20__TVF_tmp_1.endlx12Well_enc param_gate__n20__TVF_tmp_1.endlx1_inWPE\n\
+            OVERLAP ABUT ALSO MULTI\n\
+        [W_DIR_OD_LEFT = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_ext), EW(param_gate__n20__TVF_tmp_1.endlx12OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_enc), EW(param_gate__n20__TVF_tmp_1.endlx12OD_enc)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_ext), EW(param_gate__n20__TVF_tmp_1.endlx12OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx1_inOD), ECMAX(param_gate__n20__TVF_tmp_1.endlx1_inOD), 1) ), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end_lx1_range)-$lx1,ECMIN(param_gate__n20__TVF_tmp_1.end_lx1_range) ))]\n\
+        [W_DIR_OD_MID = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_ext), EW(param_gate__n20__TVF_tmp_1.endlx12OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_enc), EW(param_gate__n20__TVF_tmp_1.endlx12OD_enc)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_ext), EW(param_gate__n20__TVF_tmp_1.endlx12OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx1_inOD), ECMAX(param_gate__n20__TVF_tmp_1.endlx1_inOD), 1) ), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end_lx1_range),ECMAX(param_gate__n20__TVF_tmp_1.end_lx1_range) ))]\n\
+        [W_DIR_OD_RIGHT = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_ext), EW(param_gate__n20__TVF_tmp_1.endlx12OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_enc),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_enc), EW(param_gate__n20__TVF_tmp_1.endlx12OD_enc)+2*$n20_shift),\n\
+                          2, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12OD_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12OD_ext), EW(param_gate__n20__TVF_tmp_1.endlx12OD_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx1_inOD), ECMAX(param_gate__n20__TVF_tmp_1.endlx1_inOD), 1) ), VECTOR(ECMAX(param_gate__n20__TVF_tmp_1.end_lx1_range),ECMAX(param_gate__n20__TVF_tmp_1.end_lx1_range)+$lx1 ))]\n\
+        [W_DIR_WPE_LEFT = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12Well_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12Well_ext), EW(param_gate__n20__TVF_tmp_1.endlx12Well_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12Well_enc),ECMAX(param_gate__n20__TVF_tmp_1.endlx12Well_enc), EW(param_gate__n20__TVF_tmp_1.endlx12Well_enc)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx1_inWPE), ECMAX(param_gate__n20__TVF_tmp_1.endlx1_inWPE), 1) ),  VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end_lx1_range)-$lx1,ECMIN(param_gate__n20__TVF_tmp_1.end_lx1_range) ))]\n\
+        [W_DIR_WPE_MID = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12Well_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12Well_ext), EW(param_gate__n20__TVF_tmp_1.endlx12Well_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12Well_enc),ECMAX(param_gate__n20__TVF_tmp_1.endlx12Well_enc), EW(param_gate__n20__TVF_tmp_1.endlx12Well_enc)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx1_inWPE), ECMAX(param_gate__n20__TVF_tmp_1.endlx1_inWPE), 1) ),  VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end_lx1_range),ECMAX(param_gate__n20__TVF_tmp_1.end_lx1_range) ))]\n\
+        [W_DIR_WPE_RIGHT = RANGE_XXY( SELECT_MERGE_XXY(\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12Well_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx12Well_ext), EW(param_gate__n20__TVF_tmp_1.endlx12Well_ext)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx12Well_enc),ECMAX(param_gate__n20__TVF_tmp_1.endlx12Well_enc), EW(param_gate__n20__TVF_tmp_1.endlx12Well_enc)+2*$n20_shift),\n\
+                          1, VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx1_inWPE), ECMAX(param_gate__n20__TVF_tmp_1.endlx1_inWPE), 1) ),  VECTOR(ECMAX(param_gate__n20__TVF_tmp_1.end_lx1_range),ECMAX(param_gate__n20__TVF_tmp_1.end_lx1_range)+$lx1 ))]\n\
+        [LRANGE = VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end_lx1_range),ECMAX(param_gate__n20__TVF_tmp_1.end_lx1_range))]\n\
+param_gate__n20__TVF_tmp_1.end_bridge_p = DFM PROPERTY param_gate__n20__TVF_tmp_1.end_bridge param_gate__n20__TVF_tmp_1.end_lx1_p\n\
+            OVERLAP ABUT ALSO MULTI\n\
+        \n\
+        [W_DIR_OD_LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx1_p, W_DIR_OD_LEFT)]\n\
+        [W_DIR_OD_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx1_p, W_DIR_OD_MID)]\n\
+        [W_DIR_OD_RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx1_p, W_DIR_OD_RIGHT)]\n\
+        [W_DIR_WPE_LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx1_p, W_DIR_WPE_LEFT)]\n\
+        [W_DIR_WPE_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx1_p, W_DIR_WPE_MID)]\n\
+        [W_DIR_WPE_RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx1_p, W_DIR_WPE_RIGHT)]\n\
+        [LRANGE = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx1_p, LRANGE)]\n\
+param_gate__n20__TVF_tmp_1.end_lx2_p = DFM PROPERTY param_gate__n20__TVF_tmp_1.end_lx2_range param_gate__n20__TVF_tmp_1.endlx22M0_ext\n\
+            OVERLAP ABUT ALSO MULTI\n\
+        [M0_LRANGE = VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end_lx2_range),ECMAX(param_gate__n20__TVF_tmp_1.end_lx2_range))]\n\
+        [M0_LEFT = RANGE_XXY(SORT_MERGE_XXY(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx22M0_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx22M0_ext), EW(param_gate__n20__TVF_tmp_1.endlx22M0_ext)+$n20_shift)),VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end_lx2_range)-$lx2,ECMIN(param_gate__n20__TVF_tmp_1.end_lx2_range)))]\n\
+        [M0_MID = RANGE_XXY(SORT_MERGE_XXY(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx22M0_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx22M0_ext), EW(param_gate__n20__TVF_tmp_1.endlx22M0_ext)+$n20_shift)),VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end_lx2_range),ECMAX(param_gate__n20__TVF_tmp_1.end_lx2_range)))]\n\
+        [M0_RIGHT = RANGE_XXY(SORT_MERGE_XXY(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.endlx22M0_ext),ECMAX(param_gate__n20__TVF_tmp_1.endlx22M0_ext), EW(param_gate__n20__TVF_tmp_1.endlx22M0_ext)+$n20_shift)),VECTOR(ECMAX(param_gate__n20__TVF_tmp_1.end_lx2_range),ECMAX(param_gate__n20__TVF_tmp_1.end_lx2_range)+$lx2))]\n\
+param_gate__n20__TVF_tmp_1.end_p = DFM PROPERTY param_gate__n20__TVF_tmp_1.end param_gate__n20__TVF_tmp_1.end_bridge_p\n\
+            param_gate__n20__TVF_tmp_1.end2PXE_enc param_gate__n20__TVF_tmp_1.end2PMET_ext param_gate__n20__TVF_tmp_1.end2PMET_enc param_gate__n20__TVF_tmp_1.end2PO_enc param_gate__n20__TVF_tmp_1.end2M0_ext param_gate__n20__TVF_tmp_1.end_lx2_p\n\
+            OVERLAP ABUT ALSO MULTI\n\
+        \n\
+        [W_DIR_OD_LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_bridge_p, W_DIR_OD_LEFT)]\n\
+        [W_DIR_OD_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_bridge_p, W_DIR_OD_MID)]\n\
+        [W_DIR_OD_RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_bridge_p, W_DIR_OD_RIGHT)]\n\
+        [LRANGE = VPROPERTY(param_gate__n20__TVF_tmp_1.end_bridge_p, LRANGE)]\n\
+        [W_DIR_WPE_LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_bridge_p, W_DIR_WPE_LEFT)]\n\
+        [W_DIR_WPE_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_bridge_p, W_DIR_WPE_MID)]\n\
+        [W_DIR_WPE_RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_bridge_p, W_DIR_WPE_RIGHT)]\n\
+        [M0_LRANGE = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx2_p, M0_LRANGE)]\n\
+        [M0_LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx2_p, M0_LEFT)]\n\
+        [M0_MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx2_p, M0_MID)]\n\
+        [M0_RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_lx2_p, M0_RIGHT)]\n\
+        [PXE = SORT_MERGE_XXY(CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end2PXE_enc),ECMAX(param_gate__n20__TVF_tmp_1.end2PXE_enc), EW(param_gate__n20__TVF_tmp_1.end2PXE_enc)), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end), ECMAX(param_gate__n20__TVF_tmp_1.end), $pxe)))]\n\
+        [PMET = SELECT_MERGE_XXY(1,CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end2PMET_ext),ECMAX(param_gate__n20__TVF_tmp_1.end2PMET_ext), EW(param_gate__n20__TVF_tmp_1.end2PMET_ext)), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end2PMET_enc),ECMAX(param_gate__n20__TVF_tmp_1.end2PMET_enc), EW(param_gate__n20__TVF_tmp_1.end2PMET_enc)), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end), ECMAX(param_gate__n20__TVF_tmp_1.end), $pmet)),\n\
+                      1,CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end2M0_ext),ECMAX(param_gate__n20__TVF_tmp_1.end2M0_ext), EW(param_gate__n20__TVF_tmp_1.end2M0_ext)), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end), ECMAX(param_gate__n20__TVF_tmp_1.end), $pmet)),\n\
+                      1,CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end2PO_enc),ECMAX(param_gate__n20__TVF_tmp_1.end2PO_enc), EW(param_gate__n20__TVF_tmp_1.end2PO_enc)), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end), ECMAX(param_gate__n20__TVF_tmp_1.end), $pmet)),\n\
+                      2,CONCAT(VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end2PMET_ext),ECMAX(param_gate__n20__TVF_tmp_1.end2PMET_ext), EW(param_gate__n20__TVF_tmp_1.end2PMET_ext)), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end2PMET_enc),ECMAX(param_gate__n20__TVF_tmp_1.end2PMET_enc), EW(param_gate__n20__TVF_tmp_1.end2PMET_enc)), VECTOR(ECMIN(param_gate__n20__TVF_tmp_1.end), ECMAX(param_gate__n20__TVF_tmp_1.end), $pmet)))]\n\
+\n\
+gate_COR = DFM PROPERTY param_gate param_gate__n20__TVF_tmp_1.side_p param_gate__n20__TVF_tmp_1.side_bridge_p param_gate__n20__TVF_tmp_1.end_p param_gate__n20__TVF_tmp_1.side param_gate__n20__TVF_tmp_1.sdnet\n\
+                OVERLAP ABUT ALSO MULTI\n\
+            [NET_1 = NETPROPERTY(param_gate__n20__TVF_tmp_1.sdnet, NETID, 1)]\n\
+            [NET_2 = NETPROPERTY(param_gate__n20__TVF_tmp_1.sdnet, NETID, 2)]\n\
+            [MAX_SD = VECTOR($pse, $sod, $eod, $swell, $ewell, $pxe, $pmet, $m0)]\n\
+            [WRANGE = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, WRANGE,1)]\n\
+            [WRANGE2 = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, WRANGE,2)]\n\
+            [PSE1 = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p, PSE,1)]\n\
+            [L_DIR_OD1TOP = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_OD_TOP, 1)]\n\
+            [L_DIR_OD1MID = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_OD_MID, 1)]\n\
+            [L_DIR_OD1BOT = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_OD_BOT, 1)]\n\
+            [L_DIR_OD2TOP = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_OD_TOP, 2)]\n\
+            [L_DIR_OD2MID = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_OD_MID, 2)]\n\
+            [L_DIR_OD2BOT = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_OD_BOT, 2)]\n\
+            [PSE2 = VPROPERTY(param_gate__n20__TVF_tmp_1.side_bridge_p, PSE, 2)]\n\
+            \n\
+            [W_DIR_OD1LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_OD_LEFT, 1)]\n\
+            [W_DIR_OD1MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_OD_MID, 1)]\n\
+            [W_DIR_OD1RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_OD_RIGHT, 1)]\n\
+            [W_DIR_OD2LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_OD_LEFT, 2)]\n\
+            [W_DIR_OD2MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_OD_MID, 2)]\n\
+            [W_DIR_OD2RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_OD_RIGHT, 2)]\n\
+            [L_DIR_WPE1TOP = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_WPE_TOP, 1)]\n\
+            [L_DIR_WPE1MID = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_WPE_MID, 1)]\n\
+            [L_DIR_WPE1BOT = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_WPE_BOT, 1)]\n\
+            [L_DIR_WPE2TOP = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_WPE_TOP, 2)]\n\
+            [L_DIR_WPE2MID = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_WPE_MID, 2)]\n\
+            [L_DIR_WPE2BOT = VPROPERTY(param_gate__n20__TVF_tmp_1.side_p, L_DIR_WPE_BOT, 2)]\n\
+            [W_DIR_WPE1LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_WPE_LEFT, 1)]\n\
+            [W_DIR_WPE1MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_WPE_MID, 1)]\n\
+            [W_DIR_WPE1RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_WPE_RIGHT, 1)]\n\
+            [W_DIR_WPE2LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_WPE_LEFT, 2)]\n\
+            [W_DIR_WPE2MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_WPE_MID, 2)]\n\
+            [W_DIR_WPE2RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, W_DIR_WPE_RIGHT, 2)]\n\
+            [LRANGE = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, LRANGE, 1)]\n\
+            [LRANGE2 = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, LRANGE, 2)]\n\
+            [PXE1 = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, PXE, 1)]\n\
+            [PXE2 = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, PXE, 2)]\n\
+            [PMET1 = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, PMET, 1)]\n\
+            [PMET2 = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, PMET, 2)]\n\
+            [M0_LRANGE1 = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, M0_LRANGE,1)]\n\
+            [M0_LRANGE2 = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, M0_LRANGE,2)]\n\
+            [M01LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, M0_LEFT, 1)]\n\
+            [M01MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, M0_MID, 1)]\n\
+            [M01RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, M0_RIGHT, 1)]\n\
+            [M02LEFT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, M0_LEFT, 2)]\n\
+            [M02MID = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, M0_MID, 2)]\n\
+            [M02RIGHT = VPROPERTY(param_gate__n20__TVF_tmp_1.end_p, M0_RIGHT, 2)]\n\
+            \n\
+            \n\
+            \n\
+            \n";
+std::string convert_n20_measurements(const std::string &tmplayer,
+                                const std::string &param_gate,
+                                const std::string &param_sd,
+                                const std::string &param_active,
+                                const std::string &param_poly,
+                                const std::string &param_cpo,
+                                const string &param_well,
+                                const string &param_pmet,
+                                const string &param_m0,
+                                double pse,
+                                double sod,
+                                double eod,
+                                double swell,
+                                double ewell,
+                                double pxe,
+                                double pmet,
+                                double m0,
+                                double wx1,
+                                double lx1,
+                                double lx2,
+                                double n20_shift_value)
+
+{
+    string orignal_string = n20_measurements;
+
+    replace_all(orignal_string, "__n20__TVF_tmp_1", tmplayer);
+    replace_all(orignal_string, "param_gate", param_gate);
+    replace_all(orignal_string, "param_sd", param_sd);
+    replace_all(orignal_string, "param_actvie", param_active);
+    replace_all(orignal_string, "param_poly", param_poly);
+    replace_all(orignal_string, "param_cpo", param_cpo);
+    replace_all(orignal_string, "param_well", param_well);
+    replace_all(orignal_string, "param_pmet", param_pmet);
+    replace_all(orignal_string, "param_m0", param_m0);
+    char buff[16];
+
+    sprintf(buff, "%g", pse);
+    replace_all(orignal_string, "$pse", buff);
+    sprintf(buff, "%g", sod);
+    replace_all(orignal_string, "$sod", buff);
+    sprintf(buff, "%g", eod);
+    replace_all(orignal_string, "$eod", buff);
+    sprintf(buff, "%g", swell);
+    replace_all(orignal_string, "$swell", buff);
+    sprintf(buff, "%g", ewell);
+    replace_all(orignal_string, "$ewell", buff);
+    sprintf(buff, "%g", pxe);
+    replace_all(orignal_string, "$pxe", buff);
+    sprintf(buff, "%g", pmet);
+    replace_all(orignal_string, "$pmet", buff);
+    sprintf(buff, "%g", m0);
+    replace_all(orignal_string, "$m0", buff);
+    sprintf(buff, "%g", wx1);
+    replace_all(orignal_string, "$wx1", buff);
+    sprintf(buff, "%g", lx1);
+    replace_all(orignal_string, "$lx1", buff);
+    sprintf(buff, "%g", lx2);
+    replace_all(orignal_string, "$lx2", buff);
+    sprintf(buff, "%g", 2*n20_shift_value);
+    replace_all(orignal_string, "2*$n20_shift", buff);
+    sprintf(buff, "%g", n20_shift_value);
+    replace_all(orignal_string, "$n20_shift", buff);
+    return orignal_string;
+}
+
+string
+convert_multi_layer_measurements(const string &tmplayer,
+                                 double max_multi_layer,
+                                 const string &param_gate,
+                                 const string &param_sd,
+                                 const vector<string> &param_layers,
+                                 const vector<pair<string, double> > &param_types
+                                 )
+{
+
+    static const string first_line = "param_gate__multi_layer__TVF_tmp_1.end = NOT COINCIDENT EDGE param_gate param_sd\n";
+    string prim_layer = "param_gate__multi_layer__TVF_tmp_1.end";
+    vector<string> svrfLayers;
+
+    string orignal_string = first_line;
+
+    string strMax_multi_layer = toPreciseString(max_multi_layer);
+
+    for (size_t i=0; i<param_layers.size(); ++i)
+    {
+        const string &layer = param_layers[i];
+        string number = toPreciseString(2*param_types[i].second-1);
+        const string &type = param_types[i].first;
+
+        string _layer = "param_gate__multi_layer__TVF_tmp_1.end2$param_layer_$type";
+        replace_all(_layer, "$param_layer", layer);
+        replace_all(_layer, "$type", type);
+        svrfLayers.push_back(_layer);
+
+        string space_line = _layer + " = DFM SPACE "  + prim_layer+ " " + layer + " <= " + strMax_multi_layer + " BY "+type +" BY LAYER " + layer + " COUNT <= " + number + " MEASURE ALL\n";
+
+        orignal_string += space_line;
+    }
+    orignal_string += "\n";
+    string prim_layer_p = prim_layer + "_p";
+    string dfm_line = prim_layer_p  + " = DFM PROPERTY " + prim_layer;
+
+    for (size_t i=0; i<svrfLayers.size(); ++i)
+    {
+        dfm_line += " ";
+        dfm_line += svrfLayers[i];
+    }
+
+    orignal_string += dfm_line;
+    orignal_string += " \n";
+
+    orignal_string += "                OVERLAP ABUT ALSO MULTI\n";
+    orignal_string += "                [LRANGE = VECTOR(ECMIN(" + prim_layer +"), ECMAX(" +prim_layer +"))]\n";
+    orignal_string += "                [MULTI_LAYER = SELECT_MERGE_XXY(\n";
+
+
+    for (size_t nLayers=0; nLayers<param_types.size(); ++nLayers)
+    {
+        const pair<string, double> &type = param_types[nLayers];
+        int max_count = type.second;
+        for (int count=1; count<=max_count; ++count)
+        {
+            string line = toPreciseString(count)+",CONCAT(VECTOR(ECMIN("+svrfLayers[nLayers]+"),ECMAX("+svrfLayers[nLayers]+"), EW("+svrfLayers[nLayers]+")),  ";
+            line += "VECTOR(ECMIN("+prim_layer+"), ECMAX("+prim_layer+"), "+strMax_multi_layer+")),\n";
+            orignal_string += line;
+        }
+    }
+    orignal_string.replace(orignal_string.size()-2, 2, ")]\n\n");
+
+    string prim_layer_sdnet = "param_gate__multi_layer__TVF_tmp_1.sdnet";
+    orignal_string += prim_layer_sdnet + " = DFM PROPERTY "+param_sd+" [ NETID = NETID("+param_sd+") ]\n\n\n";
+
+    orignal_string += "$param_line_break = DFM PROPERTY "+param_gate+" "+prim_layer_p+" "+prim_layer_sdnet+"\n";
+
+    orignal_string += "                       OVERLAP ABUT ALSO MULTI\n";
+
+    orignal_string += "      [MAX_SD = VECTOR(";
+    for (size_t nLayers=0; nLayers<param_types.size(); ++nLayers)
+    {
+        const pair<string, double> &type = param_types[nLayers];
+        int max_count = type.second;
+        for (int count=0; count<max_count; ++count)
+        {
+            orignal_string += strMax_multi_layer;
+            orignal_string += ",";
+        }
+    }
+    orignal_string.replace(orignal_string.size()-1, 1, ")]\n");
+
+    orignal_string += "      [NET_1 = NETPROPERTY(" + prim_layer_sdnet+", NETID, 1)]\n";
+    orignal_string += "      [NET_2 = NETPROPERTY(" + prim_layer_sdnet+", NETID, 2)]\n";
+    orignal_string += "      [LRANGE = VPROPERTY("+prim_layer_p+", LRANGE, 1)]\n";
+    orignal_string += "      [MULTI_LAYER_1 = VPROPERTY("+prim_layer_p+", MULTI_LAYER, 1)]\n";
+    orignal_string += "      [MULTI_LAYER_2 = VPROPERTY("+prim_layer_p+", MULTI_LAYER, 2)]\n  \n";
+
+    replace_all(orignal_string, "__multi_layer__TVF_tmp_1", tmplayer);
+    replace_all(orignal_string, "param_gate", param_gate);
+    replace_all(orignal_string, "param_sd", param_sd);
+
+
+    return orignal_string;
+}
+
+int rcsTVFCompiler_T::device_n20_measurements_proc(ClientData d, Tcl_Interp *interp, int argc, const char *argv[])
+{
+    std::string param_gate;
+    std::string param_sd;
+    std::string param_active;
+    std::string param_poly;
+    std::string param_cpo;
+    std::string param_well;
+    std::string param_pmet;
+    std::string param_m0;
+
+    for (int i=0; i<argc; ++i)
+    {
+        if (strcasecmp(argv[i], "-gate") == 0)
+        {
+            if (++i < argc)
+            {
+                param_gate = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-sd") == 0)
+        {
+            if (++i < argc)
+            {
+                param_sd = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-active") == 0)
+        {
+            if (++i < argc)
+            {
+                param_active = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-poly") == 0)
+        {
+            if (++i < argc)
+            {
+                param_poly = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-cpo") == 0)
+        {
+            if (++i < argc)
+            {
+                param_cpo = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-well") == 0)
+        {
+            if (++i < argc)
+            {
+                param_well = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-pmet") == 0)
+        {
+            if (++i < argc)
+            {
+                param_pmet = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-m0") == 0)
+        {
+            if (++i < argc)
+            {
+                param_m0 = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+    }
+
+    if (param_gate.empty() || param_sd.empty() || param_active.empty() ||
+            param_poly.empty() || param_cpo.empty() || param_well.empty() ||
+            param_pmet.empty() || param_m0.empty())
+    {
+        return TCL_ERROR;
+    }
+
+    const char *pBuffer = NULL;
+    double max_pse = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_pse", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_pse) ||
+         max_pse < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_sod = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_sod", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_sod) ||
+         max_sod < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_eod = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_eod", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_eod) ||
+         max_eod < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_swell = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_swell", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_swell) ||
+         max_swell < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_ewell = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_ewell", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_ewell) ||
+         max_ewell < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_pxe = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_pxe", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_pxe) ||
+         max_pxe < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_pmet = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_pmet", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_pmet) ||
+         max_pmet < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_m0 = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_m0", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_m0) ||
+         max_m0 < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double wx1 = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::wx1", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &wx1) ||
+         wx1 < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double lx1 = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::lx1", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &lx1) ||
+         lx1 < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double lx2 = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::lx2", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &lx2) ||
+         lx2 < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double n20_shift_val = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::n20_shift_val", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &n20_shift_val) ||
+         n20_shift_val < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_md1 = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_md1", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_md1) ||
+         max_md1 < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_md2 = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_md2", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_md2) ||
+         max_md2 < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    double max_v0 = -1;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_v0", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_v0) ||
+         max_v0 < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    static int tmp_layer_num = 0;
+
+    ++tmp_layer_num;
+    char buffer[64] = {0};
+    sprintf(buffer, "__n20__TVF_tmp_%d", tmp_layer_num);
+    std::string tmpLayerString = buffer;
+
+    std::string svrf = convert_n20_measurements(
+                tmpLayerString,
+                param_gate,
+                param_sd,
+                param_active,
+                param_poly,
+                param_cpo,
+                param_well,
+                param_pmet,
+                param_m0,
+                max_pse,
+                max_sod,
+                max_eod,
+                max_swell,
+                max_ewell,
+                max_pxe,
+                max_pmet,
+                max_m0,
+                wx1,
+                lx1,
+                lx2,
+                n20_shift_val);
+
+    static const std::string layer_gate = "gate_COR = ";
+    size_t index = svrf.find(layer_gate);
+    Utassert(index != std::string::npos);
+    std::string before = svrf.substr(0, index);
+    std::string after = svrf.substr(index + layer_gate.size());
+
+    m_fSvrf << before;
+
+    Tcl_Obj *pResult = Tcl_NewStringObj(after.c_str(), after.size());
+    Tcl_SetObjResult(interp, pResult);
+
+    return TCL_OK;
+}
+
+int rcsTVFCompiler_T::multi_layer_measurements_proc(ClientData d, Tcl_Interp *interp, int argc, const char *argv[])
+{
+#if 0
+    for (int i=0; i<argc; ++i)
+    {
+        std::cout << i << " : " << argv[i] << "\n";
+    }
+    std::cout << std::endl;
+#endif
+
+
+    double max_multi_layer = 0;
+    const char *pBuffer = NULL;
+    if ( (pBuffer = Tcl_GetVar(m_pInterp, "device::max_multi_layer", 0)) == NULL ||
+         TCL_OK != Tcl_GetDouble(m_pInterp, pBuffer, &max_multi_layer) ||
+         max_multi_layer < 0)
+    {
+        return TCL_ERROR;
+    }
+
+    std::string param_gate;
+    std::string param_sd;
+
+    std::vector<std::string> param_layers;
+    std::vector<std::pair<std::string, double> > param_types;
+    for (int i=0; i<argc; ++i)
+    {
+        if (strcasecmp(argv[i], "-gate") == 0)
+        {
+            if (++i < argc)
+            {
+                param_gate = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-sd") == 0)
+        {
+            if (++i < argc)
+            {
+                param_sd = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-layers") == 0)
+        {
+            if (++i < argc)
+            {
+                int n = 0;
+                const char **ptr = NULL;
+                if (TCL_OK != Tcl_SplitList(m_pInterp, argv[i], &n, &ptr))
+                    return TCL_ERROR;
+
+                for (int j=0; j<n; ++j)
+                {
+                    param_layers.push_back(ptr[j]);
+                }
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+
+        else if (strcasecmp(argv[i], "-types") == 0)
+        {
+            if (++i < argc)
+            {
+                int n = 0;
+                const char **ptr = NULL;
+                if (TCL_OK != Tcl_SplitList(m_pInterp, argv[i], &n, &ptr))
+                    return TCL_ERROR;
+
+                for (int j=0; j<n; ++j)
+                {
+                    int k = 0;
+                    const char **ptr1 = NULL;
+                    if (TCL_OK != Tcl_SplitList(m_pInterp, ptr[j], &k, &ptr1) && k!=2)
+                        return TCL_ERROR;
+
+                    std::string t = ptr1[0];
+                    double v = 0;
+                    Tcl_GetDouble(m_pInterp, ptr1[1], &v);
+                    param_types.push_back(std::make_pair(t, v));
+                }
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+    }
+
+    if (param_gate.empty() || param_sd.empty())
+        return TCL_ERROR;
+
+    if (param_layers.empty() || param_layers.size() != param_types.size())
+            return TCL_ERROR;
+
+    for (size_t i=0; i<param_types.size(); ++i)
+    {
+        const std::string &s = param_types[i].first;
+        const double &d = param_types[i].second;
+
+        if (d < 0)
+            return TCL_ERROR;
+
+        if (0 != strcmp("enc", s.c_str()) && 0 != strcmp("ext", s.c_str()) )
+            return TCL_ERROR;
+    }
+
+    static int tmp_layer_num = 0;
+
+    ++tmp_layer_num;
+    char tmplayer[64] = {0};
+    sprintf(tmplayer, "__multi_layer__TVF_tmp_%d", tmp_layer_num);
+
+    std::string svrf = convert_multi_layer_measurements(
+                tmplayer,
+                max_multi_layer,
+                param_gate,
+                param_sd,
+                param_layers,
+                param_types
+                );
+
+    static const std::string line_break = "$param_line_break = ";
+    size_t index = svrf.find(line_break);
+    Utassert(index != std::string::npos);
+    std::string before = svrf.substr(0, index);
+    std::string after = svrf.substr(index + line_break.size());
+
+    m_fSvrf << before;
+
+    Tcl_Obj *pResult = Tcl_NewStringObj(after.c_str(), after.size());
+    Tcl_SetObjResult(interp, pResult);
+
+    return TCL_OK;
+}
+
+const char *cpo_measurements = "\
+param_gate__param_well__cpo__TVF_tmp_1.side = MERGE(COINCIDENT EDGE param_gate param_sd) \n\
+param_gate__param_well__cpo__TVF_tmp_1.end = MERGE(NOT COINCIDENT EDGE param_gate param_sd) \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_etd = DFM SHIFT EDGE [param_gate__param_well__cpo__TVF_tmp_1.side] OUTSIDE BY 0 EXTEND BY ( 4 * $param_shift_val ) \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ends = NOT COINCIDENT EDGE param_gate__param_well__cpo__TVF_tmp_1.side_etd param_gate__param_well__cpo__TVF_tmp_1.side \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ext1 = DFM SPACE param_gate__param_well__cpo__TVF_tmp_1.side_ends param1_poly1 < $param_lx BY EXTERNAL BY LAYER param1_poly1 COUNT == 0 \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ext2 = DFM SPACE param_gate__param_well__cpo__TVF_tmp_1.side_ends param1_poly1 < $param_lx BY EXTERNAL BY LAYER param1_poly1 COUNT == 2 \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ext3 = DFM SPACE param_gate__param_well__cpo__TVF_tmp_1.side_ends param1_poly1 < $param_lx BY EXTERNAL BY LAYER param1_poly1 COUNT == 4 \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ends_s = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_ends param_gate__param_well__cpo__TVF_tmp_1.side_ext1 param_gate__param_well__cpo__TVF_tmp_1.side_ext2 param_gate__param_well__cpo__TVF_tmp_1.side_ext3 \n\
+                      OVERLAP ABUT ALSO MULTI \n\
+                      [ s1 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_ext1) == 0) ? 0 : FMIN($param_lx - $param_shift_val, MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.side_ext1)) + $param_max_jog + $param_shift_val) ] \n\
+                      [ s2 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_ext2) == 0) ? 0 : FMIN($param_lx - $param_shift_val, MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.side_ext2)) + $param_max_jog + $param_shift_val) ] \n\
+                      [ s3 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_ext3) == 0) ? 0 : FMIN($param_lx - $param_shift_val, MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.side_ext3)) + $param_max_jog + $param_shift_val) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_etd_p = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.end param_gate__param_well__cpo__TVF_tmp_1.side_ends_s \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR \n\
+                      [ etd = FMAX(PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_s, s3, 1), PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_s, s3, 2), PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_s, s2, 1), PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_s, s2, 2), PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_s, s1, 1), PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_s, s1, 2)) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_etd = DFM SHIFT EDGE [param_gate__param_well__cpo__TVF_tmp_1.end_etd_p] OUTSIDE BY $param_shift_val EXTEND BY \"etd\" \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_pobc = INSIDE EDGE param_gate__param_well__cpo__TVF_tmp_1.end_etd param1_poly1 \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac = INSIDE EDGE param_gate__param_well__cpo__TVF_tmp_1.end_etd param_poly \n\
+param_gate__param_well__cpo__TVF_tmp_1.po_cutted = AND param_well param1_poly1 \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc = DFM SPACE param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac param_poly < ($param_max_cpo - $param_shift_val) BY ENCLOSURE BY LAYER param_poly COUNT == 0 MEASURE ALL \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext = DFM SPACE param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac param_gate__param_well__cpo__TVF_tmp_1.po_cutted < ($param_max_cpo - $param_shift_val) BY EXTERNAL BY LAYER param_gate__param_well__cpo__TVF_tmp_1.po_cutted COUNT == 0 MEASURE ALL \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_brg_1 = DFM SHIFT EDGE param_gate__param_well__cpo__TVF_tmp_1.side_ends_s OUTSIDE BY \"s1\" EXTEND PRODUCED BY -$param_shift_val COLLAPSE ORIGINAL \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_brg_2 = DFM SHIFT EDGE param_gate__param_well__cpo__TVF_tmp_1.side_ends_s OUTSIDE BY \"s2\" EXTEND PRODUCED BY -$param_shift_val COLLAPSE ORIGINAL \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_brg_3 = DFM SHIFT EDGE param_gate__param_well__cpo__TVF_tmp_1.side_ends_s OUTSIDE BY \"s3\" EXTEND PRODUCED BY -$param_shift_val COLLAPSE ORIGINAL \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_brg_1 param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR  \n\
+                      [ spo = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac) == 0) ? -1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc) == 0) ? $param_max_cpo : (MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc))+$param_shift_val) ] \n\
+                      [ poleflag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac) == 0) ? -1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc) == 0) ? 1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext) == 0) ? 1 : (MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc)) < EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext)) ? 1 : 0 ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_brg_2 param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR \n\
+                      [ spo = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac) == 0) ? -1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc) == 0) ? $param_max_cpo : (MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc))+$param_shift_val) ] \n\
+                      [ poleflag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac) == 0) ? -1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc) == 0) ? 1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext) == 0) ? 1 : (MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc)) < EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext)) ? 1 : 0 ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_brg_3 param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR \n\
+                      [ spo = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac) == 0) ? -1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc) == 0) ? $param_max_cpo : (MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc))+$param_shift_val) ] \n\
+                      [ poleflag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_in_poac) == 0) ? -1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc) == 0) ? 1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext) == 0) ? 1 : (MIN(EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_poac_enc)) < EW(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext)) ? 1 : 0 ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc = DFM SPACE param_gate__param_well__cpo__TVF_tmp_1.end param_poly < $param_max_cpo BY ENCLOSURE BY LAYER param_poly COUNT == 0 MEASURE ALL \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_cpo_ext = DFM SPACE param_gate__param_well__cpo__TVF_tmp_1.end param_gate__param_well__cpo__TVF_tmp_1.po_cutted < $param_max_cpo BY EXTERNAL BY LAYER param_gate__param_well__cpo__TVF_tmp_1.po_cutted COUNT == 0 MEASURE ALL \n\
+param_gate__param_sd__seltop__TVF_tmp_2_trim_pins = param_sd NOT param_gate \n\
+param_gate__param_sd__seltop__TVF_tmp_2_dev_rect_only = (RECTANGLE param_gate > (20 * $param_shift_val) ORTHOGONAL ONLY) INTERACT param_gate__param_sd__seltop__TVF_tmp_2_trim_pins == 2 \n\
+param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_edges = param_gate__param_sd__seltop__TVF_tmp_2_dev_rect_only TOUCH OUTSIDE EDGE param_gate__param_sd__seltop__TVF_tmp_2_trim_pins \n\
+param_gate__param_sd__seltop__TVF_tmp_2_dev_end_edges = param_gate__param_sd__seltop__TVF_tmp_2_dev_rect_only NOT TOUCH OUTSIDE EDGE param_gate__param_sd__seltop__TVF_tmp_2_trim_pins \n\
+param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_short = DFM SHIFT EDGE [param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_edges] INSIDE BY 0 EXTEND BY ( -10 * $param_shift_val ) \n\
+param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_ends = param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_edges NOT COINCIDENT EDGE param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_short \n\
+param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_ends_p = DFM PROPERTY SELECT SECONDARY param_gate param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_ends param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_edges OVERLAP ABUT ALSO MULTI \n\
+                      SELECT param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_ends \n\
+                      [ LOW = ( ECMIN( param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_ends ) == MIN(ECMIN( param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_edges )) ) ? ( 1 ) : (0) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_top = DFM PROPERTY param_gate__param_sd__seltop__TVF_tmp_2_dev_end_edges param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_ends_p OVERLAP SINGULAR ABUT ALSO \n\
+                      [ - = COUNT( param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_ends_p ) ] == 2 \n\
+                      [ - = PROPERTY( param_gate__param_sd__seltop__TVF_tmp_2_dev_param_sd_ends_p, LOW, 1 ) ] == 0 \n\
+param_gate__param_sd__selbot__TVF_tmp_3_trim_pins = param_sd NOT param_gate \n\
+param_gate__param_sd__selbot__TVF_tmp_3_dev_rect_only = (RECTANGLE param_gate > ( 20 * $param_shift_val ) ORTHOGONAL ONLY) INTERACT param_gate__param_sd__selbot__TVF_tmp_3_trim_pins == 2 \n\
+param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_edges = param_gate__param_sd__selbot__TVF_tmp_3_dev_rect_only TOUCH OUTSIDE EDGE param_gate__param_sd__selbot__TVF_tmp_3_trim_pins \n\
+param_gate__param_sd__selbot__TVF_tmp_3_dev_end_edges = param_gate__param_sd__selbot__TVF_tmp_3_dev_rect_only NOT TOUCH OUTSIDE EDGE param_gate__param_sd__selbot__TVF_tmp_3_trim_pins \n\
+param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_short = DFM SHIFT EDGE [param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_edges] INSIDE BY 0 EXTEND BY -( 10 * $param_shift_val ) \n\
+param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_ends = param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_edges NOT COINCIDENT EDGE param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_short \n\
+param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_ends_p = DFM PROPERTY SELECT SECONDARY param_gate param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_ends param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_edges OVERLAP ABUT ALSO MULTI \n\
+                      SELECT param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_ends \n\
+                      [ LOW = ( ECMIN( param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_ends ) == MIN(ECMIN( param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_edges )) ) ? ( 1 ) : (0) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_bottom = DFM PROPERTY param_gate__param_sd__selbot__TVF_tmp_3_dev_end_edges param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_ends_p OVERLAP SINGULAR ABUT ALSO \n\
+                      [ - = COUNT( param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_ends_p ) ] == 2 \n\
+                      [ - = PROPERTY( param_gate__param_sd__selbot__TVF_tmp_3_dev_param_sd_ends_p, LOW, 1 ) ] == 1 \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_top_p = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.end_top param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc param_gate__param_well__cpo__TVF_tmp_1.end_cpo_ext \n\
+                      OVERLAP ABUT ALSO MULTI \n\
+                      [ spo = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc) == 0) ? $param_max_cpo : (EC(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc) < LENGTH(param_gate__param_well__cpo__TVF_tmp_1.end_top)) ? $param_max_cpo : MAX(EW(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc)) ] \n\
+                      [ poleflag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc) == 0) ? 1 : (EC(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc) < LENGTH(param_gate__param_well__cpo__TVF_tmp_1.end_top)) ? 1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_cpo_ext) == 0) ? 1 : (MAX(EW(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc)) < EW(param_gate__param_well__cpo__TVF_tmp_1.end_cpo_ext)) ? 1 : 0 ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_bottom_p = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.end_bottom param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc param_gate__param_well__cpo__TVF_tmp_1.end_cpo_ext \n\
+                      OVERLAP ABUT ALSO MULTI \n\
+                      [ spo = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc) == 0) ? $param_max_cpo : (EC(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc) < LENGTH(param_gate__param_well__cpo__TVF_tmp_1.end_bottom)) ? $param_max_cpo : MAX(EW(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc)) ] \n\
+                      [ poleflag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc) == 0) ? 1 : (EC(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc) < LENGTH(param_gate__param_well__cpo__TVF_tmp_1.end_bottom)) ? 1 : (COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_cpo_ext) == 0) ? 1 : (MAX(EW(param_gate__param_well__cpo__TVF_tmp_1.end_poac_enc)) < EW(param_gate__param_well__cpo__TVF_tmp_1.end_cpo_ext)) ? 1 : 0 ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0 = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_ends param_gate__param_well__cpo__TVF_tmp_1.end_top_p \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR \n\
+                      [ - = COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_top_p) ] > 0 \n\
+                      [ spo = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_top_p, spo) ] \n\
+                      [ poleflag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_top_p, poleflag) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0 = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_ends param_gate__param_well__cpo__TVF_tmp_1.end_bottom_p \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR \n\
+                      [ - = COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_bottom_p) ] > 0 \n\
+                      [ spo = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_bottom_p, spo) ] \n\
+                      [ poleflag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_bottom_p, poleflag) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0 param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR POINT \n\
+                      [ spo = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, spo) ] \n\
+                      [ spo1 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, spo) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, spo) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p, spo) ] \n\
+                      [ spo2 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, spo) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, spo) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p, spo) ] \n\
+                      [ spo3 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, spo) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, spo) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p, spo) ] \n\
+                      [ poleflag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, poleflag) ] \n\
+                      [ pole1flag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, poleflag) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, poleflag) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p, poleflag) ] \n\
+                      [ pole2flag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, poleflag) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, poleflag) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p, poleflag) ] \n\
+                      [ pole3flag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, poleflag) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t0, poleflag) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p, poleflag) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0 param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR POINT \n\
+                      [ spo = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, spo) ] \n\
+                      [ spo1 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, spo) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, spo) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p, spo) ] \n\
+                      [ spo2 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, spo) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, spo) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p, spo) ] \n\
+                      [ spo3 = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, spo) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, spo) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p, spo) ] \n\
+                      [ poleflag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, poleflag) ] \n\
+                      [ pole1flag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, poleflag) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, poleflag) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1p, poleflag) ] \n\
+                      [ pole2flag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, poleflag) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, poleflag) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_2p, poleflag) ] \n\
+                      [ pole3flag = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p) == 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, poleflag) : (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p, spo) == -1) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b0, poleflag) : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_3p, poleflag) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.cpo_e = LENGTH param_well >= 0 \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext param_gate__param_well__cpo__TVF_tmp_1.cpo_e param_poly \n\
+                      OVERLAP ABUT ALSO MULTI DBU \n\
+                      [ - = COUNT(param_poly) ] == 1 \n\
+                      [ cpo_max = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.cpo_e) == 0) ? 0 : MIN(ECMAX(param_gate__param_well__cpo__TVF_tmp_1.cpo_e)) ] \n\
+                      [ cpo_min = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.cpo_e) == 0) ? 0 : MIN(ECMIN(param_gate__param_well__cpo__TVF_tmp_1.cpo_e)) ] \n\
+                      [ end_etd_begin = ECBEGIN(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext) ] \n\
+                      [ end_etd_end = ECEND(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext) ] \n\
+                      [ mirror = (PROPERTY_REF(end_etd_begin) < PROPERTY_REF(end_etd_end)) ? 0 : 1 ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.end_s = DFM SHIFT EDGE param_gate__param_well__cpo__TVF_tmp_1.end OUTSIDE BY ( 2 * $param_shift_val ) \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo_pre = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_brg_1 param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR POINT \n\
+                      [ - = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t) == 0) ? 1 : ABS(PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, spo)-PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, spo1)) ] > 1E-14 \n\
+                      [ - = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b) == 0) ? 1 : ABS(PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, spo)-PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, spo1)) ] > 1E-14 \n\
+                      [ - = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t) == 0) ? 0 : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, pole1flag) ] == 0 \n\
+                      [ - = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b) == 0) ? 0 : PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, pole1flag) ] == 0 \n\
+param_gate__param_well__cpo__TVF_tmp_1.dbu = DFM PROPERTY SINGLETON param_gate \n\
+                      [ pc = PRECISION() ] \n\
+                      [ max_jog = ROUND(PROPERTY_REF(pc) * $param_max_jog) ] \n\
+                      [ lx = ROUND(PROPERTY_REF(pc) * $param_lx) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo_pre param_gate__param_well__cpo__TVF_tmp_1.end_s param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext param_gate__param_well__cpo__TVF_tmp_1.dbu \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR DBU \n\
+                      [ - = COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p) ] > 0 \n\
+                      [ \"+end_etd_begin\" = MIN(ECBEGIN(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext)) ] \n\
+                      [ \"+end_etd_end\" = MIN(ECEND(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_ext)) ] \n\
+                      [ \"+mirror\" = (PROPERTY_REF(\"+end_etd_begin\") < PROPERTY_REF(\"+end_etd_end\")) ? 0 : 1 ] \n\
+                      [ \"+align\" = (PROPERTY_REF(\"+mirror\") == PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p, mirror)) ? 1 : 0 ] \n\
+                      [ \"+shift\" = (PROPERTY_REF(\"+align\") == 1) ? (PROPERTY_REF(\"+end_etd_begin\") - PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p, end_etd_begin)) : (PROPERTY_REF(\"+end_etd_begin\") + PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p, end_etd_begin)) ] \n\
+                      [ \"+cpo_max\" = (PROPERTY_REF(\"+align\") == 1) ? (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p, cpo_max) + PROPERTY_REF(\"+shift\")) : (-PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p, cpo_min) + PROPERTY_REF(\"+shift\")) ] \n\
+                      [ \"+cpo_min\" = (PROPERTY_REF(\"+align\") == 1) ? (PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p, cpo_min) + PROPERTY_REF(\"+shift\")) : (-PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p, cpo_max) + PROPERTY_REF(\"+shift\")) ] \n\
+                      [ \"+self_is_min\" = (ABS(MAX(ECMIN(param_gate__param_well__cpo__TVF_tmp_1.end_s)) - MAX(ECMIN(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p))) <= PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.dbu, max_jog)) ? 1 : (ABS(MAX(ECMAX(param_gate__param_well__cpo__TVF_tmp_1.end_s)) - MAX(ECMAX(param_gate__param_well__cpo__TVF_tmp_1.end_etd_cpo_p))) <= PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.dbu, max_jog)) ? 1 : 0 ] \n\
+                      [ \"+cpo_max_bound\" = ((PROPERTY_REF(\"+self_is_min\") == 1) ? MIN(ECMAX(param_gate__param_well__cpo__TVF_tmp_1.end_s)) : MAX(ECMAX(param_gate__param_well__cpo__TVF_tmp_1.end_s))) + PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.dbu, lx) ] \n\
+                      [ \"+cpo_min_bound\" = ((PROPERTY_REF(\"+self_is_min\") == 1) ? MIN(ECMIN(param_gate__param_well__cpo__TVF_tmp_1.end_s)) : MAX(ECMIN(param_gate__param_well__cpo__TVF_tmp_1.end_s))) -  PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.dbu, lx) ] \n\
+                      [ \"+cpo_max_new\" = FMIN(PROPERTY_REF(\"+cpo_max\"), PROPERTY_REF(\"+cpo_max_bound\")) ] \n\
+                      [ \"+cpo_min_new\" = FMAX(PROPERTY_REF(\"+cpo_min\"), PROPERTY_REF(\"+cpo_min_bound\")) ] \n\
+                      [ \"+lcpo_pre\" = PROPERTY_REF(\"+cpo_max_new\") - PROPERTY_REF(\"+cpo_min_new\") ] \n\
+                      [ lcpo = PROPERTY_REF(\"+lcpo_pre\") / PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.dbu, pc) ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ends_lcpo_t = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_ends param_gate__param_well__cpo__TVF_tmp_1.end_top param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR \n\
+                      [ - = COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_top) ] > 0 \n\
+                      [ lcpo = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo) > 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo, lcpo) : 0 ] \n\
+param_gate__param_well__cpo__TVF_tmp_1.side_ends_lcpo_b = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side_ends param_gate__param_well__cpo__TVF_tmp_1.end_bottom param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo \n\
+                      OVERLAP ABUT ALSO MULTI SINGULAR \n\
+                      [ - = COUNT(param_gate__param_well__cpo__TVF_tmp_1.end_bottom) ] > 0 \n\
+                      [ lcpo = (COUNT(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo) > 0) ? PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_brg_1_lcpo, lcpo) : 0 ] \n\
+$ENC_PROP_RESULT = DFM PROPERTY param_gate__param_well__cpo__TVF_tmp_1.side param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b param_gate__param_well__cpo__TVF_tmp_1.side_ends_lcpo_t param_gate__param_well__cpo__TVF_tmp_1.side_ends_lcpo_b \n\
+                      OVERLAP ABUT ALSO SINGULAR \n\
+                      [ spot = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, spo) ] \n\
+                      [ spob = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, spo) ] \n\
+                      [ spot1 = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, spo1) ] \n\
+                      [ spot2 = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, spo2) ] \n\
+                      [ spot3 = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, spo3) ] \n\
+                      [ spob1 = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, spo1) ] \n\
+                      [ spob2 = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, spo2) ] \n\
+                      [ spob3 = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, spo3) ] \n\
+                      [ poletflag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, poleflag) ] \n\
+                      [ polebflag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, poleflag) ] \n\
+                      [ polet1flag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, pole1flag) ] \n\
+                      [ polet2flag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, pole2flag) ] \n\
+                      [ polet3flag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_t, pole3flag) ] \n\
+                      [ poleb1flag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, pole1flag) ] \n\
+                      [ poleb2flag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, pole2flag) ] \n\
+                      [ poleb3flag = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_spo_b, pole3flag) ] \n\
+                      [ lcpot = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_lcpo_t, lcpo) ] \n\
+                      [ lcpob = PROPERTY(param_gate__param_well__cpo__TVF_tmp_1.side_ends_lcpo_b, lcpo) ] \n\
+          ";
+
+
+std::pair<std::string, std::string> convert_cpo_measurements(const std::string &param_gate,
+                                const std::string &param_sd,
+                                const std::string &param1_poly1,
+                                const std::string &param_poly,
+                                const std::string &param_well,
+                                double lx,
+                                double max_cpo,
+                                double max_jog,
+                                double shift_val
+                                )
+{
+    static int tmp_layer_num = 0;
+    char buffer[64] = {0};
+    sprintf(buffer, "TVF_tmp_%d", ++tmp_layer_num);
+    std::string tmp_layer1 = buffer;
+    sprintf(buffer, "TVF_tmp_%d", ++tmp_layer_num);
+    std::string tmp_layer2 = buffer;
+    sprintf(buffer, "TVF_tmp_%d", ++tmp_layer_num);
+    std::string tmp_layer3 = buffer;
+    std::string orignal_string = cpo_measurements;
+    replace_all(orignal_string, "TVF_tmp_1", tmp_layer1);
+    replace_all(orignal_string, "TVF_tmp_2", tmp_layer2);
+    replace_all(orignal_string, "TVF_tmp_3", tmp_layer3);
+    replace_all(orignal_string, "param_gate", param_gate);
+    replace_all(orignal_string, "param_sd", param_sd);
+    replace_all(orignal_string, "param1_poly1", param1_poly1);
+    replace_all(orignal_string, "param_poly", param_poly);
+    replace_all(orignal_string, "param_well", param_well);
+    char buff[16];
+    sprintf(buff, "%g", lx);
+    replace_all(orignal_string, "$param_lx", buff);
+    sprintf(buff, "%g", max_cpo);
+    replace_all(orignal_string, "$param_max_cpo", buff);
+    sprintf(buff, "%g", max_jog);
+    replace_all(orignal_string, "$param_max_jog", buff);
+    sprintf(buff, "%g", shift_val);
+    replace_all(orignal_string, "$param_shift_val", buff);
+    static const std::string ENC_PROP = "$ENC_PROP_RESULT = ";
+    size_t index = orignal_string.find(ENC_PROP);
+    std::string before = orignal_string.substr(0, index);
+    std::string after = orignal_string.substr(index + ENC_PROP.size());
+
+    return std::make_pair(before, after);
+}
+
+int rcsTVFCompiler_T::cpo_measurements_proc(ClientData d, Tcl_Interp *interp, int argc, const char *argv[])
+{
+    std::string param_gate;
+    std::string param_sd;
+    std::string param1_poly1;
+    std::string param_poly;
+    std::string param_well;
+    std::string param_lx;
+    std::string param_max_cpo;
+    std::string param_max_jog;
+    std::string param_shift_val;
+
+    for (int i=0; i<argc; ++i)
+    {
+        if (strcasecmp(argv[i], "-gate") == 0)
+        {
+            if (++i < argc)
+            {
+                param_gate = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-sd") == 0)
+        {
+            if (++i < argc)
+            {
+                param_sd = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-po_bc") == 0)
+        {
+            if (++i < argc)
+            {
+                param1_poly1 = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-po_ac") == 0)
+        {
+            if (++i < argc)
+            {
+                param_poly = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-cpo") == 0)
+        {
+            if (++i < argc)
+            {
+                param_well = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-lx") == 0)
+        {
+            if (++i < argc)
+            {
+                param_lx = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-max_cpo") == 0)
+        {
+            if (++i < argc)
+            {
+                param_max_cpo = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-max_jog") == 0)
+        {
+            if (++i < argc)
+            {
+                param_max_jog = argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+        else if (strcasecmp(argv[i], "-shift_val") == 0)
+        {
+            if (++i < argc)
+            {
+                param_shift_val= argv[i];
+            }
+            else
+            {
+                return TCL_ERROR;
+            }
+        }
+    }
+
+    if (param_gate.empty() || param_sd.empty() || param1_poly1.empty() ||
+            param_poly.empty() || param_well.empty() || param_lx.empty() ||
+            param_max_cpo.empty() || param_max_jog.empty() || param_shift_val.empty())
+    {
+        return TCL_ERROR;
+    }
+
+    std::pair<std::string, std::string > p = convert_cpo_measurements(
+                param_gate,
+                param_sd,
+                param1_poly1,
+                param_poly,
+                param_well,
+                atof(param_lx.c_str()),
+                atof(param_max_cpo.c_str()),
+                atof(param_max_jog.c_str()),
+                atof(param_shift_val.c_str())
+                );
+
+    m_fSvrf << p.first;
+
+    Tcl_Obj *pResult = Tcl_NewStringObj(p.second.c_str(), p.second.size());
+    Tcl_SetObjResult(interp, pResult);
+
+    return TCL_OK;
+}
 
 int
 rcsTVFCompiler_T::void_proc(ClientData d, Tcl_Interp *interp,
@@ -1990,7 +3277,7 @@ rcsTVFCompiler_T::InitProc( Tcl_Interp *interp )
         namespace export enclosure_measurements ENCLOSURE_MEASUREMENTS strained_silicon_measurements STRAINED_SILICON_MEASUREMENTS contact_resistance_measurements CONTACT_RESISTANCE_MEASUREMENTS; \
         namespace export get_tmp_layer_name GET_TMP_LAYER_NAME set_search_distance SET_SEARCH_DISTANCE build_drc_layer_debug BUILD_DRC_LAYER_DEBUG build_dfm_layer_debug BUILD_DFM_LAYER_DEBUG build_nlayer_concat_vectors_string BUILD_NLAYER_CONCAT_VECTORS_STRING;\
         }";
-    iRet = Tcl_RecordAndEval(interp, const_cast<char*>(deviceCmd), 0);
+    iRet = Tcl_RecordAndEval(interp, deviceCmd, 0);
     if(iRet == TCL_ERROR)
     {
         printf("define device namespace failed!\n");
@@ -2023,6 +3310,26 @@ rcsTVFCompiler_T::InitProc( Tcl_Interp *interp )
     Tcl_SetVar(interp, "device::avg_enc", "1.5", TCL_NAMESPACE_ONLY);
     Tcl_SetVar(interp, "device::dfmspace", "1", TCL_NAMESPACE_ONLY);
 
+    Tcl_SetVar(interp, "device::max_pse", "-1.0", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_sod", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_eod", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_swell", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_ewell", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_pxe", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_pmet", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_m0", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::wx1", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::lx1", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::lx2", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::n20_shift_val", "0.001", TCL_NAMESPACE_ONLY);
+
+    Tcl_SetVar(interp, "device::max_md1", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_md2", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_v0", "-1", TCL_NAMESPACE_ONLY);
+
+    Tcl_SetVar(interp, "device::skip_cmod", "-1", TCL_NAMESPACE_ONLY);
+    Tcl_SetVar(interp, "device::max_multi_layer", "-1", TCL_NAMESPACE_ONLY);
+
     Tcl_CreateCommand(interp,"device::enclosure_measurements", (&rcsTVFCompiler_T::enclosure_measurements_proc), (ClientData)0, 0);
     Tcl_CreateCommand(interp,"device::ENCLOSURE_MEASUREMENTS", (&rcsTVFCompiler_T::enclosure_measurements_proc), (ClientData)0, 0);
 
@@ -2053,6 +3360,15 @@ rcsTVFCompiler_T::InitProc( Tcl_Interp *interp )
     Tcl_CreateCommand(interp, "device::convert_to_enc",  (&rcsTVFCompiler_T::dfm_vec_measurements_proc), (ClientData)0, 0);
     Tcl_CreateCommand(interp, "device::CONVERT_TO_ENC",  (&rcsTVFCompiler_T::dfm_vec_measurements_proc), (ClientData)0, 0);
 
+    Tcl_CreateCommand(interp, "device::n20_measurements", (&rcsTVFCompiler_T::device_n20_measurements_proc), (ClientData)0, 0);
+    Tcl_CreateCommand(interp, "device::n20_MEASUREMENTS", (&rcsTVFCompiler_T::device_n20_measurements_proc), (ClientData)0, 0);
+
+    Tcl_CreateCommand(interp, "device::multi_layer_measurements", (&rcsTVFCompiler_T::multi_layer_measurements_proc), (ClientData)0, 0);
+    Tcl_CreateCommand(interp, "device::MULTI_LAYER_MEASUREMENTS", (&rcsTVFCompiler_T::multi_layer_measurements_proc), (ClientData)0, 0);
+
+    Tcl_CreateCommand(interp, "device::cpo_measurements", (&rcsTVFCompiler_T::cpo_measurements_proc), (ClientData)0, 0);
+    Tcl_CreateCommand(interp, "device::CPO_MEASUREMENTS", (&rcsTVFCompiler_T::cpo_measurements_proc), (ClientData)0, 0);
+
     return TCL_OK;
 }
 
@@ -2060,7 +3376,7 @@ rcsTVFCompiler_T::InitProc( Tcl_Interp *interp )
 int
 rcsTVFCompiler_T::tvf_compiler()
 {
-    if(access(m_pTvfFilename, R_OK) != 0)
+    if(access(m_pTvfFilename.c_str(), R_OK) != 0)
     {
         printf("no file %s exist or has no permission to read\n!", m_pTvfFilename );
         return TCL_ERROR;
@@ -2097,7 +3413,7 @@ rcsTVFCompiler_T::tvf_compiler()
         return TCL_ERROR;
     }
 
-    int iRet = Tcl_EvalFile(m_pInterp, m_pTvfFilename);
+    int iRet = Tcl_EvalFile(m_pInterp, m_pTvfFilename.c_str());
     if(iRet == TCL_ERROR)
     {
         printf("\nERROR occurs at line %d: %s\n", m_pInterp->errorLine,
@@ -2119,15 +3435,15 @@ rcsTVFCompiler_T::~rcsTVFCompiler_T()
 
 
 
-rcsTVFCompiler_T::rcsTVFCompiler_T(char* pRuleFile, char* pSvrfFile, char* ptvfarg)
+rcsTVFCompiler_T::rcsTVFCompiler_T(const std::string &pRuleFile, const std::string &pSvrfFile, const std::string &ptvfarg)
 {
     m_pTvfFilename  = pRuleFile;
     m_pSvrfFileName = pSvrfFile;
     m_pTvfArg       = ptvfarg;
 
-    if( NULL == m_pSvrfFileName )
+    if(m_pSvrfFileName.empty())
     {
-        m_pSvrfFileName = const_cast<char*>(".tvf2svrf.tmp");
+        m_pSvrfFileName = ".tvf2svrf.tmp";
     }
 
     m_pInterp = g_warpper_CreateInterp();
@@ -2141,8 +3457,8 @@ rcsTVFCompiler_T::rcsTVFCompiler_T(char* pRuleFile, char* pSvrfFile, char* ptvfa
     return ;
 }
 
-char*
+const char*
 rcsTVFCompiler_T::getsvrffilename()
 {
-    return m_pSvrfFileName;
+    return m_pSvrfFileName.c_str();
 }

@@ -7,6 +7,9 @@
 #include <string>
 #include <ostream>
 #include <stack>
+#include <map>
+#include "unistd.h"
+#include <fstream>
 #include "public/util/rcsStringUtil.hpp"
 
 #include "public/synnode/rcsSynNodeVisitor.h"
@@ -18,7 +21,7 @@ class rcsSynNode_T;
 class rcsSynPvrsConvertor: public rcsNodeVisitor_T
 {
 public:
-    rcsSynPvrsConvertor(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLinesBefore);
+    rcsSynPvrsConvertor(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLinesBefore, bool bTvfConvertor = false);
     virtual ~rcsSynPvrsConvertor();
 
     virtual void beginVisitLayerDefinitionNode(rcsSynLayerDefinitionNode_T *pNode);
@@ -43,12 +46,16 @@ public:
 
     virtual void beginVisitDMACRODummyNode(rcsSynDMACRODummyNode_T *pNode);
 
+    virtual void beginVisitSwitchUnknowNode(rcsSynSwitchUnKnowNode_T *pNode);
+
 
     static bool getStringName(std::list<rcsToken_T>::iterator &iter,
                               std::list<rcsToken_T>::iterator end,
                               std::string &sValue);
 
     void setHasGetTmpLayerValues();
+
+    void closeDebugFile();
 
 protected:
     static bool isPossibleNoParaKeyword(rcsSynSpecificationNode_T *pNode);
@@ -57,11 +64,11 @@ protected:
     static bool getNumberExp(std::list<rcsToken_T>::iterator &iter, std::list<rcsToken_T>::iterator end, std::string &sExp,
                              bool withParentheses = false, bool isAllowExpression = true);
     static bool getNumberExpForTvfCmdWithNegativePara(std::list<rcsToken_T>::iterator &iter, std::list<rcsToken_T>::iterator end,
-    		std::string &sExp, bool withParentheses = false, bool isAllowExpression = true);
+            std::string &sExp, bool withParentheses = false, bool isAllowExpression = true);
     static bool getConstraint(std::list<rcsToken_T>::iterator &iter, std::list<rcsToken_T>::iterator end,
-    		std::string &sConstraint);
+            std::string &sConstraint);
     static bool getConstraintNoExpr(std::list<rcsToken_T>::iterator &iter, std::list<rcsToken_T>::iterator end,
-    		std::string &sConstraint);
+            std::string &sConstraint);
 
     bool outputBuiltInLangInTrs(const rcsToken_T &token, hvUInt32 &nOption);
     void outputBuiltInLang(KEY_TYPE eType, const rcsToken_T &token, hvUInt32 &nOption);
@@ -75,6 +82,7 @@ protected:
                                 const hvUInt32 nMinCount = 1, const hvUInt32 nMaxCount = 2);
     bool transLayoutExceptionOption(const std::string &sExceptionName, int iSeverityValue,std::string &sCmd);
     void outputText(const char *pOption, const char *pValue, const hvUInt32 nOption = 0);
+    void outputOriginString(std::list<rcsToken_T>::iterator iter);
     void outputCon2Error(rcsSynNode_T *pNode, const rcsToken_T &token);
     void outputCon1Error(rcsSynNode_T *pNode);
     bool parsePlaceCellInfo(std::list<rcsToken_T>::iterator &iter,
@@ -134,12 +142,16 @@ protected:
     void convCorrespondingCellSpec(rcsSynSpecificationNode_T *pNode);
 
     void convLvsSplitGateRatio(rcsSynSpecificationNode_T *pNode);
+    void convLvsNetlistProperty(rcsSynSpecificationNode_T *pNode);
+    void convLvsAutoExpandHcell(rcsSynSpecificationNode_T *pNode);
 
     void convOutputMagSpec(rcsSynSpecificationNode_T *pNode);
     void convDrcOutputLibSpec(rcsSynSpecificationNode_T *pNode);
     void convDrcOutPrecisionSpec(rcsSynSpecificationNode_T *pNode);
     void convFindShortsSpec(rcsSynSpecificationNode_T *pNode);
     void convErcPathchkSpec(rcsSynSpecificationNode_T *pNode);
+
+    void convErcTclSpec(rcsSynSpecificationNode_T *pNode);
 
     void convDeviceOnPathSpec(rcsSynSpecificationNode_T *pNode);
     void convCellListSpec(rcsSynSpecificationNode_T *pNode);
@@ -159,6 +171,8 @@ protected:
     void convBlackBoxSpec(rcsSynSpecificationNode_T *pNode);
     void convLvsBlackBoxPortSpec(rcsSynSpecificationNode_T *pNode);
     void convLvsBlackBoxPortDepthSpec(rcsSynSpecificationNode_T *pNode);
+    void convLvsBoxCutExtentSpec(rcsSynSpecificationNode_T *pNode);
+    void convLvsBoxPeekLayerSpec(rcsSynSpecificationNode_T *pNode);
     void convPropResolutionMaxSpec(rcsSynSpecificationNode_T *pNode);
     void convInitialNetSpec(rcsSynSpecificationNode_T *pNode);
     void convNameListSpec(rcsSynSpecificationNode_T *pNode);
@@ -181,6 +195,7 @@ protected:
     void convCustomizedSpec(rcsSynSpecificationNode_T *pNode);
     void convOldIsolateNetSpec(rcsSynSpecificationNode_T *pNode);
     void convTvfFuncSpec(rcsSynSpecificationNode_T *pNode);
+    std::string  dealVariable(std::string sScript);
     
     void convExecProcCmd(rcsSynLayerOperationNode_T *pNode);
     void convCheckSpaceCmd(rcsSynLayerOperationNode_T *pNode);
@@ -206,6 +221,7 @@ protected:
     void convCheckOffgridCmd(rcsSynLayerOperationNode_T *pNode);
     void convGeomOriginalCheckCmd(rcsSynLayerOperationNode_T *pNode);
     void convGeomSelectDeviceLayerCmd(rcsSynLayerOperationNode_T *pNode);
+    void convDfmOrEdge(rcsSynLayerOperationNode_T *pNode);
     void convBuildDfmPropertyCmd(rcsSynLayerOperationNode_T *pNode);
     void convDfmPropertySelectSecondaryCmd(rcsSynLayerOperationNode_T *pNode);
     void convBuildDfmPropertyNetCmd(rcsSynLayerOperationNode_T *pNode);
@@ -272,13 +288,40 @@ protected:
     void convNetInteract(rcsSynLayerOperationNode_T *pNode);
     void convLayoutCloneRotatedPlacements(rcsSynSpecificationNode_T *pNode);
     void convLayoutCloneTransformedPlacements(rcsSynSpecificationNode_T *pNode);
+    void convLayoutPathWidthMultiple(rcsSynSpecificationNode_T *pNode);
+    void convDFMDefaultsRDB(rcsSynSpecificationNode_T *pNode);
 
+    void convDFMFill(rcsSynLayerOperationNode_T *pNode);
     
     void outputTrsPrefix(rcsSynSpecificationNode_T *pNode);
     void outputTrsPrefix(rcsSynLayerOperationNode_T *pNode);
 
     void outputBlankLinesBefore(hvUInt32 nCurLine, bool isReset = true);
 
+
+    bool convCommonNode(KEY_TYPE type, rcsSynNode_T *pNode);
+
+    bool parseTmpLayerForOperation(std::string& tmpLayer);
+
+    void parseLithoFileSpec(rcsSynSpecificationNode_T *pNode);
+    void convRetNMDPCCmd(rcsSynLayerOperationNode_T *pNode);
+    void convRetTPCmd(rcsSynLayerOperationNode_T *pNode);
+    void convRetQPCmd(rcsSynLayerOperationNode_T *pNode);
+private:
+    typedef std::map<KEY_TYPE, std::string> rcs_OptionMap;
+    struct rcs_SvrfRuleInfo
+    {
+        KEY_TYPE      m_key;
+        std::string   m_pvrsKey;
+        rcs_OptionMap m_optMap;
+    };
+
+    typedef std::map<KEY_TYPE, rcs_SvrfRuleInfo> rcs_KeyMap;
+
+    rcs_KeyMap m_simplePVRSmap;
+    void initSimplePVRSmap();
+    rcs_SvrfRuleInfo& addSvrfKey(KEY_TYPE t, const char *pvrs);
+    void addSvrfOption(rcs_SvrfRuleInfo &info, KEY_TYPE t, const char *pvrs);
 protected:
     static bool _hasOnlyDirectKeyword(rcsSynNode_T *pNode);
 
@@ -288,12 +331,15 @@ protected:
     std::string   m_sPVRSCmdPrefix;
     std::string   m_sTmpLayerName;
 
+    std::ofstream  m_oCommandStream;
+    std::string   m_sCurCommandString;
+    std::set<std::string> m_debugCommandSet;
 protected:
     bool m_isTmpLayerDefinition;
     bool m_isInLayerDefinition;
     bool m_hasPrecisionDef;
     bool m_hasGetTmpLayerValue;
-
+    hvUInt32 m_nParsingTmpLayers;
 protected:
     struct ltStringCase
     {
@@ -319,6 +365,7 @@ protected:
 
 private:
     std::map<hvUInt32, std::pair<hvUInt32, bool> > &m_blankLinesBefore;
+    bool m_bTvfConvertor;
 
 private:
     

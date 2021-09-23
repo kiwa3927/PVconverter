@@ -89,7 +89,7 @@ void do_eval(string const &str)
 }
 
 
-typedef map<int, shared_ptr<CallbackBase> > CallbacksMap;
+typedef map<int, std::shared_ptr<CallbackBase> > CallbacksMap;
 CallbacksMap callbacks;
 
 
@@ -226,7 +226,7 @@ void callbackDeleter(ClientData cd)
      callbacks.erase(slot);
 }
 
-string Tk::details::addCallback(shared_ptr<CallbackBase> cb)
+string Tk::details::addCallback(std::shared_ptr<CallbackBase> cb)
 {
      int newSlot = callbackId++;
      callbacks[newSlot] = cb;
@@ -664,7 +664,7 @@ string details::quote(string const &s)
 
 Expr Tk::operator-(Expr const &lhs, Expr const &rhs)
 {
-     shared_ptr<Command> cmd(lhs.getCmd());
+     std::shared_ptr<Command> cmd(lhs.getCmd());
      cmd->append(rhs.getValue());
      
      return Expr(cmd);
@@ -672,7 +672,7 @@ Expr Tk::operator-(Expr const &lhs, Expr const &rhs)
 
 Expr Tk::operator<<(string const &w, Expr const &rhs)
 {
-     shared_ptr<Command> cmd(rhs.getCmd());
+     std::shared_ptr<Command> cmd(rhs.getCmd());
      cmd->prepend(" ");
      cmd->prepend(w);
 

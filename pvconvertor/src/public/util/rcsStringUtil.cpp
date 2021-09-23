@@ -107,19 +107,24 @@ void _replaceBuildIn(const std::string &sBuildIn, std::string &sResult)
 {
     sResult = sBuildIn;
     trim(sResult);
-    sResult.erase(0, 1);
-    sResult.erase(sResult.size() - 1);
-    trim(sResult);
-    if(sResult[0] == '\"' || sResult[0] == '\'')
+    // if buildin is not complete, use args "-full" the erase is too careless!, commented by st.233
+
+    if (sResult.size() >= 2 && sResult[0] == '[' && sResult[sResult.size()-1] == ']')
     {
-        trim(sResult, "\"\'");
-        sResult.insert(0, "[\n\"");
-        sResult.insert(sResult.size(), "\"\n]");
-    }
-    else
-    {
-        sResult.insert(0, "[\n");
-        sResult.insert(sResult.size(), "\n]");
+        sResult.erase(0, 1);
+        sResult.erase(sResult.size() - 1);
+        trim(sResult);
+        if(sResult[0] == '\"' || sResult[0] == '\'')
+        {
+            trim(sResult, "\"\'");
+            sResult.insert(0, "[\n\"");
+            sResult.insert(sResult.size(), "\"\n]");
+        }
+        else
+        {
+            sResult.insert(0, "[\n");
+            sResult.insert(sResult.size(), "\n]");
+        }
     }
 }
 
@@ -211,6 +216,7 @@ bool _replaceComment(const std::string &sCheckComment, std::string &sResult, boo
                 break;
 
             i = end;
+            sResult += "trs";
             break;
         }
         case 's':

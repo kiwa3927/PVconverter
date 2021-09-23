@@ -69,7 +69,7 @@ STRING          ((\"((\\[^\n\r]?)|[^"\\\r\n])*["])|(\'((\\[^\r\n]?)|[^'\\\r\n])*
 (tvf\:\:)?FLAG 							   {return TVF_SVRF_COMMAND;}
 
 (tvf\:\:)?\/\/    				           {return TVF_COMMENT;}
-(tvf\:\:)?COMMENT				           {return TVF_COMMENT;}
+(tvf\:\:)?COMMENT				           {return TVF_RULE_CHECK_COMMENT;}
 (tvf\:\:)?@ 	  				           {return TVF_RULE_CHECK_COMMENT;}
 (tvf\:\:)?epilog				           {return TVF_EPILOG;}
 (tvf\:\:)?print_call_stack		           {return TVF_PRINT_CALL_STACK;}
@@ -99,6 +99,8 @@ STRING          ((\"((\\[^\n\r]?)|[^"\\\r\n])*["])|(\'((\\[^\r\n]?)|[^'\\\r\n])*
 (tvf\:\:)?set_disclaimer                   {return TVF_SET_DISCLAIMER;}
 (tvf\:\:)?set_rule_check_indentation       {return TVF_SET_RULE_CHECK_INDENTATION;}
 (tvf\:\:)?set_traceback_line               {return TVF_SET_TRACEBACK_LINE;}
+(erc\:\:)?setup_parallel_device_parameters             {return ERC_SETUP_PARALLEL_DEVICE_PARAMS;}
+(erc\:\:)?execute_parallel_device_parameters             {return ERC_EXECUTE_PARALLEL_DEVICE_PARAMS;}
 
 [[:digit:]]+(\.)?(0)*                               {return INT_NUMBER;}
 [[:digit:]]*\.[[:digit:]]+                          {return FLOAT_NUMBER;}

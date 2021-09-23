@@ -23,6 +23,8 @@ private:
     static bool exp(std::list<rcsToken_T>::iterator &begin, std::list<rcsToken_T>::iterator end, std::string &sNumExpr);
     static bool factor(std::list<rcsToken_T>::iterator &begin, std::list<rcsToken_T>::iterator end, std::string &sNumExpr);
     static bool term(std::list<rcsToken_T>::iterator &begin, std::list<rcsToken_T>::iterator end, std::string &sNumExpr);
+    static bool isFuncName(const std::string &funcName);
+    static bool parseFunc(std::list<rcsToken_T>::iterator &iter, std::list<rcsToken_T>::iterator end, std::string &sNumExpr);
 
     static bool m_isNewPvrs;
     static bool m_isNegativeNumber;

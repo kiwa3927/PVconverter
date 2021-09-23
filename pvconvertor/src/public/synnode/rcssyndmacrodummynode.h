@@ -6,7 +6,13 @@
 class rcsSynDMACRODummyNode_T : public rcsSynNode_T
 {
 public:
-    void accept(rcsNodeVisitor_T &visitor);
+    virtual void accept(rcsNodeVisitor_T &visitor);
+};
+
+class rcsSynSwitchUnKnowNode_T : public rcsSynNode_T
+{
+public:
+    virtual void accept(rcsNodeVisitor_T &visitor);
 };
 
 #endif 

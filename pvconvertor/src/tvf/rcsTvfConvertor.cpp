@@ -1,5 +1,4 @@
 
-
 #include <stdlib.h>
 #include <iostream>
 #include <sstream>
@@ -25,7 +24,7 @@ bool rcsTvfConvertor::m_shasImportInclude = false;
 bool rcsTvfConvertor::m_bOutputAllNamespace = false;
 std::vector<std::string> rcsTvfConvertor::m_svTvfKeyword;
 
-rcsTvfConvertor::rcsTvfConvertor(const char *pFileName)
+rcsTvfConvertor::rcsTvfConvertor(const std::string &pFileName)
 : m_sFileName(pFileName),
   m_oPVRSStream(&(rcsManager_T::getInstance()->getPVRSOutStream())),
   m_oLogStream(rcsManager_T::getInstance()->getPVRSSumStream()),
@@ -35,6 +34,8 @@ rcsTvfConvertor::rcsTvfConvertor(const char *pFileName)
     {
         m_svTvfKeyword.push_back("tvf::");
         m_svTvfKeyword.push_back("device::");
+        //add erctcl func
+        m_svTvfKeyword.push_back("erc::");
     }
 }
 
@@ -62,6 +63,9 @@ rcsTvfConvertor::parseStringArgv(Tcl_Parse &parse, Tcl_Token *tokenPtr,
 
     while(Tcl_ParseCommand(m_pInterp, p, end - p, 0, &newParse) == TCL_OK)
     {
+#ifdef DEBUG
+        std::cerr << "Parsing Command:" << std::string(newParse.commandStart, newParse.commandSize) << std::endl;
+#endif
         p = newParse.commandStart + newParse.commandSize;
         parseCommandArgv(newParse, script);
         if (p >= end)
@@ -89,6 +93,114 @@ rcsTvfConvertor::parseStringArgv(Tcl_Parse &parse, Tcl_Token *tokenPtr,
     return true;
 }
 
+
+static void insertDoubleQuoteToWord(string &word)
+{
+    if( (word.size() > 1) && ( ('(' == word[0]) && (')' != word[word.size() - 1]) ) )
+    {
+        word.erase(0);
+        hvUInt32 nLeftBracket = 1;
+        while( (word.size() > 1) && ( ('(' == word[0]) && (')' != word[word.size() - 1]) ) )
+        {
+            word.erase(0);
+            nLeftBracket++;
+        }
+        word.insert(word.begin(), '\"');
+        word.insert(word.end(), '\"');
+        while(nLeftBracket > 0)
+        {
+            word.insert(word.begin(), '(');
+            nLeftBracket--;
+        }
+    }
+    else if( (word.size() > 1) && ( ('(' != word[0]) && (')' == word[word.size() - 1]) ) )
+    {
+        word.insert(word.begin(), '\"');
+
+        word.erase(word.size() - 1);
+        word += "\"";
+        hvUInt32 nRightBracket = 1;
+        while( (word.size() > 1) && ( ('(' != word[0]) && (')' == word[word.size() - 1]) ) )
+        {
+            word.erase(word.size() - 1);
+            nRightBracket++;
+        }
+        while(nRightBracket > 0)
+        {
+            word += ")";
+            nRightBracket--;
+        }
+    }
+    else
+    {
+    	bool bLeftFlag = true;
+    	bool bRightFlag = true;
+        if(word.size() > 2)
+        {
+            if( (('\\' == word[0]) && ('\"' == word[1])) &&
+            	(('\\' != word[word.size() - 2]) || ('\"' != word[word.size() - 1])) )
+            	bRightFlag = false;
+            if( (('\\' == word[word.size() - 2]) && ('\"' == word[word.size() - 1])) &&
+            	(('\\' != word[0]) || ('\"' != word[1])) )
+            	bLeftFlag = false;
+        }
+        if(bLeftFlag)
+        {
+        	word.insert(word.begin(), '\"');
+        }
+        if(bRightFlag)
+        {
+        	word.insert(word.end(), '\"');
+        }
+    }
+}
+
+static void insertDoubleQuoteToWord_skipParentheses(string &word)
+{
+	bool bLeftFlag = true;
+	bool bRightFlag = true;
+    if(word.size() > 2)
+    {
+        if( (('\\' == word[0]) && ('\"' == word[1])) &&
+        	(('\\' != word[word.size() - 2]) || ('\"' != word[word.size() - 1]))	)
+        	bRightFlag = false;
+        if( (('\\' == word[word.size() - 2]) && ('\"' == word[word.size() - 1])) &&
+        	(('\\' != word[0]) || ('\"' != word[1])) )
+        	bLeftFlag = false;
+    }
+    {
+        string::iterator beg = word.begin();
+        while (beg != word.end())
+        {
+            const char &c = *beg;
+            if ( !std::isspace(c) && c != '(' )
+                break;
+
+            ++beg;
+        }
+        if(bLeftFlag)
+        {
+        	word.insert(beg, '\"');
+        }
+    }
+
+    {
+        string::reverse_iterator rbeg = word.rbegin();
+        while (rbeg != word.rend())
+        {
+            const char &c = *rbeg;
+            if ( !std::isspace(c) && c != ')' )
+                break;
+
+            ++rbeg;
+        }
+        if(bRightFlag)
+        {
+        	word.insert(rbeg.base(), '\"');
+        }
+    }
+}
+
 bool
 rcsTvfConvertor::parseCommandArgv(Tcl_Parse &parse, std::string &script)
 {
@@ -108,6 +220,16 @@ rcsTvfConvertor::parseCommandArgv(Tcl_Parse &parse, std::string &script)
     for(; wordIdx < (hvUInt32)parse.numWords; wordIdx++, tokenPtr += (tokenPtr->numComponents + 1))
     {
         std::string word(tokenPtr->start, tokenPtr->size);
+
+        if(wordIdx == parse.numWords-1)
+        {
+        	trim(word);
+        	if(word=="\\")
+        	{
+        		continue;
+        	}
+        }
+
         if(word.find('{') == std::string::npos && word.find('}') == std::string::npos &&
            word.find('[') == std::string::npos && word.find(']') == std::string::npos &&
            word.find('\\') == std::string::npos && word.find('\"') == std::string::npos)
@@ -131,33 +253,27 @@ rcsTvfConvertor::parseCommandArgv(Tcl_Parse &parse, std::string &script)
             	}
             	else
             	{
-                    script += "\"";
+                    insertDoubleQuoteToWord(word);
                     script += word;
-                    script += "\"";
             	}
             }
             else
             {
-                
-                script += "\"";
+                insertDoubleQuoteToWord(word);
                 script += word;
-                script += "\"";
             }
         }
         else if(tokenPtr->start[0] == '[' && tokenPtr->start[tokenPtr->size - 1] == ']')
         {
             if(tokenPtr->numComponents == 1)
             {
-                script += "\"";
+                insertDoubleQuoteToWord(word);
                 script += word;
-                script += "\"";
             }
             else
             {
-                
-                script += "\"";
+                insertDoubleQuoteToWord(word);
                 script += word;
-                script += "\"";
             }
         }
         else if(word.find('[') != std::string::npos || word.find(']') != std::string::npos)
@@ -172,11 +288,20 @@ rcsTvfConvertor::parseCommandArgv(Tcl_Parse &parse, std::string &script)
             }
 
             i = word.find(']');
-            while(i != std::string::npos && i != 0 && word[i - 1] == '\\')
+            //while(i != std::string::npos && i != 0 && word[i - 1] == '\\')
+            while(i != std::string::npos)
             {
-                isBuiltInLang = true;
-                word.erase(i - 1, 1);
-                i = word.find(']');
+                //isBuiltInLang = true;
+                if(i != 0 && word[i - 1] == '\\')
+                {
+                	isBuiltInLang = true;
+                	word.erase(i - 1, 1);
+                	i = word.find(']', i);
+                }
+                else
+                {
+                	i = word.find(']', i + 1);
+                }
             }
 
             if(isBuiltInLang)
@@ -185,16 +310,14 @@ rcsTvfConvertor::parseCommandArgv(Tcl_Parse &parse, std::string &script)
             }
             else
             {
-                script += "\"";
-                script += word;
-                script += "\"";
+				insertDoubleQuoteToWord(word);
+				script += word;
             }
         }
         else
         {
-            script += "\"";
+            insertDoubleQuoteToWord_skipParentheses(word);
             script += word;
-            script += "\"";
         }
 
         script += " ";
@@ -287,14 +410,14 @@ rcsTvfConvertor::parseSetLayerDefinition(Tcl_Parse &parse)
 bool
 rcsTvfConvertor::parseDeviceCommand(std::string sInFile, std::string sOutFile, std::string& result)
 {
-    rcsTVFCompiler_T tvf2svrf(const_cast<char*>(sInFile.c_str()), const_cast<char*>(sOutFile.c_str()));
+    rcsTVFCompiler_T tvf2svrf(sInFile, sOutFile);
     int n = tvf2svrf.tvf_compiler();
 
     if(n == 0)
     {
-    	std::string sPvrsFile = const_cast<char*>(".output.pvrs.tmp");;
+        std::string sPvrsFile = ".output.pvrs.tmp";;
     	convertSvrfToPvrs(sOutFile, sPvrsFile);
-    	std::ifstream outFile(const_cast<char*>(sPvrsFile.c_str()));
+        std::ifstream outFile(sPvrsFile.c_str());
     	std::string line;
     	if(outFile)
     	{
@@ -324,6 +447,61 @@ rcsTvfConvertor::convertSvrfToPvrs(std::string sInFile, std::string sOutFile)
     return system(cmd.c_str()) == 0;
 }
 
+std::string rcsTvfConvertor::outputSpecifiedSubString(const std::string& strSrc, const std::string& strSub, const std::string& strSpec)
+{
+    std::string strResult;
+    size_t nSrcPos = 0;
+    size_t index = 0;
+    while((index = strSrc.find(strSub, index)) != std::string::npos)
+    {
+        if((index == 0 || std::isspace(strSrc[index - 1])) &&
+                (index + strSub.length() >= strSrc.length() || std::isspace(strSrc[index + strSub.length()])))
+        {
+            strResult += strSrc.substr(nSrcPos, index - nSrcPos);
+            strResult += strSpec;
+            nSrcPos = index + strSub.length();
+        }
+        index += strSub.size();
+    }
+    strResult += strSrc.substr(nSrcPos);
+    return strResult;
+}
+
+bool rcsTvfConvertor::parseErcSetupParallelDeviceParamsCommand(Tcl_Parse &parse)
+{
+    Utassert(strncasecmp(parse.tokenPtr[0].start, "erc::setup_parallel_device_parameters", 37) == 0 ||
+             strncasecmp(parse.tokenPtr[0].start, "setup_parallel_device_parameters", 32) == 0);
+
+    (*m_oPVRSStream) << "erc::setup_parallel_device_param";
+
+    hvUInt32 lineNumInTvf = rcsSvrf2Pvrs::findLineNumInTvfFun("erc::setup_parallel_device_parameters");
+    rcsSvrf2Pvrs::increaseCurLineNo(lineNumInTvf);
+
+    //transform -devices option to -device option
+    std::string strSrc(parse.commandStart + parse.tokenPtr[0].size, 0, parse.commandSize - parse.tokenPtr[0].size);
+    std::string strSub = "-devices", strSpec = "-device";
+    std::string strRes = outputSpecifiedSubString(strSrc, strSub, strSpec);
+    (*m_oPVRSStream) << strRes.c_str();
+
+    return true;
+}
+
+bool rcsTvfConvertor::parseErcExecuteParallelDeviceParamsCommand(Tcl_Parse &parse)
+{
+    Utassert(strncasecmp(parse.tokenPtr[0].start, "erc::execute_parallel_device_parameters", 39) == 0 ||
+             strncasecmp(parse.tokenPtr[0].start, "execute_parallel_device_parameters", 34) == 0);
+
+    (*m_oPVRSStream) << "erc::execute_parallel_device_param";
+
+    hvUInt32 lineNumInTvf = rcsSvrf2Pvrs::findLineNumInTvfFun("erc::execute_parallel_device_parameters");
+    rcsSvrf2Pvrs::increaseCurLineNo(lineNumInTvf);
+
+    (*m_oPVRSStream).write(parse.commandStart + parse.tokenPtr[0].size,
+                           parse.commandSize - parse.tokenPtr[0].size);
+
+    return true;
+}
+
 bool
 rcsTvfConvertor::hasTvfKeyword(const char *p, const char *end)
 {
@@ -345,6 +523,9 @@ rcsTvfConvertor::isTvfKeyword(const char *p, const char *end)
     if(strncasecmp(script.c_str(), "tvf::", 5) == 0)
         return true;
     else if(strncasecmp(script.c_str(), "device::", 5) == 0)
+        return true;
+    //add erctcl func
+    else if(strncasecmp(script.c_str(), "erc::", 5) == 0)
         return true;
 
     for(std::vector<std::string>::const_iterator iter = m_svTvfKeyword.begin();
@@ -409,9 +590,8 @@ bool
 rcsTvfConvertor::parseTvfComment(Tcl_Parse &parse)
 {
     Utassert(strncmp(parse.tokenPtr[0].start, "// ", 3) == 0 ||
-             strncasecmp(parse.tokenPtr[0].start, "comment ", 8) == 0 ||
-             strncmp(parse.tokenPtr[0].start, "tvf::// ", 8) == 0 ||
-             strncasecmp(parse.tokenPtr[0].start, "tvf::comment ", 13) == 0);
+             strncmp(parse.tokenPtr[0].start, "tvf::// ", 8) == 0);
+
     (*m_oPVRSStream) << "trs::// ";
     (*m_oPVRSStream).write(parse.commandStart + parse.tokenPtr[0].size,
                            parse.commandSize - parse.tokenPtr[0].size);
@@ -476,7 +656,9 @@ bool
 rcsTvfConvertor::parseTvfRuleCheckComment(Tcl_Parse &parse)
 {
     Utassert(strncmp(parse.tokenPtr[0].start, "@ ", 2) == 0 ||
-             strncasecmp(parse.tokenPtr[0].start, "tvf::@ ", 7) == 0);
+            strncasecmp(parse.tokenPtr[0].start, "tvf::@ ", 7) == 0 ||
+            strncasecmp(parse.tokenPtr[0].start, "comment ", 8) == 0 ||
+            strncasecmp(parse.tokenPtr[0].start, "tvf::comment ", 13) == 0);
 
 
     (*m_oPVRSStream) << "trs::comment ";
@@ -1303,22 +1485,21 @@ rcsTvfConvertor::parseTclCommand(Tcl_Parse &parse)
                         	std::transform(namespace_str.begin(),namespace_str.end(),namespace_str.begin(),::tolower);
                         	(*m_oPVRSStream) << "namespace import trs::" << namespace_str << std::endl;
                         }
-                        
-                        
-                        
                     }
                     else if(tokenPtr->type == TCL_TOKEN_TEXT &&
                             strncasecmp(tokenPtr->start, "device::", 8) == 0)
                     {
                         m_svTvfKeyword.push_back(std::string(tokenPtr->start + 8, tokenPtr->size - 8));
-
                         
                         if (m_svTvfKeyword.back() == "*")
                             m_svTvfKeyword.pop_back();
-
-                        
-                        
-                        
+                    }
+                    else if(tokenPtr->type == TCL_TOKEN_TEXT &&
+                            strncasecmp(tokenPtr->start, "erc::*", 6) == 0)
+                    {
+                        (*m_oPVRSStream) << "namespace import erc::* \n";
+                        m_svTvfKeyword.push_back("setup_parallel_device_parameters");
+                        m_svTvfKeyword.push_back("execute_parallel_device_parameters");
                     }
                 }
                 return true;
@@ -1350,6 +1531,12 @@ rcsTvfConvertor::parseTclCommand(Tcl_Parse &parse)
     	return true;
     }
 #endif
+
+    if(isTclPackageLine(parse.commandStart) && strstr(parse.commandStart, "CalibreLVS_ERC_TVF") != NULL)
+    {
+        (*m_oPVRSStream) << "\n";
+        return true;
+    }
 
     if(!hasTvfKeyword(parse.commandStart, parse.commandStart + parse.commandSize))
     {
@@ -1428,6 +1615,7 @@ rcsTvfConvertor::parseTclCommand(Tcl_Parse &parse)
                     if(tokenPtr->start != (tokenPtr + 1)->start)
                         (*m_oPVRSStream).write(tokenPtr->start, (tokenPtr + 1)->start - tokenPtr->start);
 
+#if 0
                     Tcl_Parse newParse;
                     const char *p, *end;
                     p = (tokenPtr + 1)->start;
@@ -1487,8 +1675,71 @@ rcsTvfConvertor::parseTclCommand(Tcl_Parse &parse)
                                             (tokenPtr + tokenPtr->numComponents)->start -
                                             (tokenPtr + tokenPtr->numComponents)->size);
                     }
-                }
+#endif
+                    Tcl_Parse newParse;
+                    for(hvUInt32 index = 1; index <= tokenPtr->numComponents; index++)
+                    {
+                      	std::string _tokenScript((tokenPtr + index)->start, (tokenPtr + index)->size);
+						if(_tokenScript[0] == '[' && _tokenScript[_tokenScript.size() - 1] == ']')
+						{
+							(*m_oPVRSStream) << "[";
 
+							if(!parseScript(m_pInterp, _tokenScript.c_str() + 1, _tokenScript.size() - 2))
+								return false;
+
+							(*m_oPVRSStream) << "]";
+
+							continue;
+						}
+					    const char *p, *end;
+					    p = _tokenScript.c_str();
+					    end = p + _tokenScript.size();
+	                    while(Tcl_ParseCommand(m_pInterp, _tokenScript.c_str(), _tokenScript.size(), 0, &newParse) == TCL_OK)
+	                    {
+	                        if(newParse.commentStart != NULL && p != newParse.commentStart)
+	                        {
+	                            (*m_oPVRSStream).write(p, newParse.commentStart - p);
+	                        }
+	                        else if(newParse.commentStart == NULL && newParse.commandStart != NULL && p != newParse.commandStart)
+	                        {
+	                            (*m_oPVRSStream).write(p, newParse.commandStart - p);
+	                        }
+
+	                        if(!hasTvfKeyword(newParse.commandStart, newParse.commandStart + newParse.commandSize))
+	                        {
+	                            (*m_oPVRSStream).write(newParse.commandStart, newParse.commandSize);
+	                        }
+	                        else if(newParse.commandStart == p && newParse.commandSize == end - p &&
+	                                newParse.numWords == 1)
+	                        {
+	                            (*m_oPVRSStream).write(newParse.commandStart, newParse.commandSize);
+	                        }
+	                        else
+	                        {
+	                            parseTclCommand(newParse);
+	                        }
+
+	                        p = newParse.commandStart + newParse.commandSize;
+	                        if (p >= end)
+	                            break;
+	                        Tcl_FreeParse(&newParse);
+	                    }
+
+	                    if(p != end)
+	                    {
+	                        int errorLine = 1;
+	                        for(const char *i = m_pScript; i != p; ++i)
+	                        {
+	                            if(i[0] == '\n')
+	                                ++errorLine;
+	                        }
+	                        std::cerr << "Compile-Error on line " << errorLine << " of " << m_sFileName <<  ": "
+	                                  << Tcl_GetString(Tcl_GetObjResult(m_pInterp)) << std::endl;
+	                        Tcl_FreeParse(&parse);
+	                        return false;
+	                    }
+	                }
+                }
             }
 
 
@@ -1675,6 +1926,10 @@ rcsTvfConvertor::parseTvfCommand(Tcl_Parse &parse)
             return parseTvfSvrfVarCommand(parse);
         case TVF_SYS_VAR:
             return parseTvfSystemVarCommand(parse);
+        case ERC_SETUP_PARALLEL_DEVICE_PARAMS:
+            return parseErcSetupParallelDeviceParamsCommand(parse);
+        case ERC_EXECUTE_PARALLEL_DEVICE_PARAMS:
+            return parseErcExecuteParallelDeviceParamsCommand(parse);
         default:
             break;
     }
@@ -1736,6 +1991,26 @@ rcsTvfConvertor::execute(const char* pScript)
     else
     {
         script = pScript;
+    }
+
+    std::string::size_type nPos = script.find("\\[");
+    while(nPos != std::string::npos)
+    {
+    	nPos += 2;
+    	while(nPos < script.size())
+    	{
+    		if(']' == script[nPos])
+    		{
+    			if('\\' != script[nPos - 1])
+    			{
+    				script.insert(nPos, "\\");
+    				nPos++;
+    			}
+    			break;
+    		}
+    		nPos++;
+    	}
+    	nPos = script.find("\\[", nPos + 2);
     }
 
     if(m_pInterp == NULL)

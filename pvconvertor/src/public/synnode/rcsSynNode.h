@@ -32,6 +32,12 @@ public:
 
     inline void getCmdValue(std::string &sValue);
 
+    void appendTokenForCMacro(std::list<rcsToken_T>::iterator first,
+                              std::list<rcsToken_T>::iterator last)
+    {
+        m_listTokens.insert(m_listTokens.end(), first, last);
+    }
+
 protected:
     std::list<rcsToken_T> m_listTokens;
 };

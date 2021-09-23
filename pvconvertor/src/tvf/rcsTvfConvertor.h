@@ -13,7 +13,7 @@ struct Tcl_Token;
 class rcsTvfConvertor
 {
 public:
-    rcsTvfConvertor(const char *pFileName);
+    rcsTvfConvertor(const std::string &pFileName);
     virtual ~rcsTvfConvertor();
 
     bool execute(const char* pScript = NULL);
@@ -57,6 +57,9 @@ private:
     bool parseTvfIncludeFileCommandRespectively(Tcl_Parse &parse);
     bool parseDeviceCommand(std::string sInFile, std::string sOutFile, std::string& result);
     bool convertSvrfToPvrs(std::string sInFile, std::string sOutFile);
+    //add erctcl func
+    bool parseErcSetupParallelDeviceParamsCommand(Tcl_Parse &parse);
+    bool parseErcExecuteParallelDeviceParamsCommand(Tcl_Parse &parse);
 
 private:
     static bool hasTvfKeyword(const char *p, const char *end);
@@ -70,6 +73,13 @@ private:
     bool parseIncludeSvrfFile(std::string sInFile, const std::string &outFile, std::ostream &out);
     bool parseSourceTvfFile(std::string sInFile, const std::string &outFile, std::ostream &out);
     bool isTVFRule(const char* pFilename);
+    /* params
+     * return: result string
+     * std::string strSrc: source input string
+     * std::string strSub: the original substring to be replaced
+     * std::string strSpec: the specified substring to replace origin
+     */
+    std::string outputSpecifiedSubString(const std::string& strSrc, const std::string& strSub, const std::string& strSpec);
 
 private:
     std::string   m_sFileName;

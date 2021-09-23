@@ -15,9 +15,9 @@
 
 
 bool rcpTRSCompiler::m_isInRulecheck = false;
-char* rcpTRSCompiler::m_pTrsArg         = NULL;
-char* rcpTRSCompiler::m_pTrsFilename    = const_cast<char*>("");
-char* rcpTRSCompiler::m_pPvrsFileName   = const_cast<char*>("");
+std::string rcpTRSCompiler::m_pTrsArg         ;
+std::string rcpTRSCompiler::m_pTrsFilename    ;
+std::string rcpTRSCompiler::m_pPvrsFileName   ;
 Tcl_Interp* rcpTRSCompiler::m_pInterp = NULL;
 
 std::vector<std::string> *rcpTRSCompiler::m_pvSourceFiles = NULL;
@@ -311,7 +311,7 @@ int
 rcpTRSCompiler::gettrsarg_proc(ClientData d, Tcl_Interp *pInterp,
                                int argc, const char * argv[])
 {
-    Tcl_SetResult(pInterp, m_pTrsArg, TCL_VOLATILE);
+    Tcl_SetResult(pInterp, &m_pTrsArg[0], TCL_VOLATILE);
     return TCL_OK;
 }
 
@@ -1905,8 +1905,8 @@ rcpTRSCompiler::InitProc(Tcl_Interp *pInterp)
     Tcl_CreateCommand(pInterp, "trs::IGNORE_ORIGINAL_LAYER_CHECK", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
     Tcl_CreateCommand(pInterp, "trs::layer_dir", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
     Tcl_CreateCommand(pInterp, "trs::LAYER_DIR", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
-    Tcl_CreateCommand(pInterp, "trs::layout_connect_layer", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
-    Tcl_CreateCommand(pInterp, "trs::LAYOUT_CONNECT_LAYER", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
+    Tcl_CreateCommand(pInterp, "trs::layout_metal_layer", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
+    Tcl_CreateCommand(pInterp, "trs::LAYOUT_METAL_LAYER", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
     Tcl_CreateCommand(pInterp, "trs::layout_device_cell", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
     Tcl_CreateCommand(pInterp, "trs::LAYOUT_DEVICE_CELL", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
     Tcl_CreateCommand(pInterp, "trs::layout_device_layer", (&rcpTRSCompiler::pvrscmd_proc), (ClientData)0, 0);
@@ -2975,7 +2975,7 @@ rcpTRSCompiler::sourceCmdTracrProc(ClientData clientData, Tcl_Interp *pInterp,
 int
 rcpTRSCompiler::trs_compiler()
 {
-    if(access(m_pTrsFilename, R_OK) != 0)
+    if(access(m_pTrsFilename.c_str(), R_OK) != 0)
     {
         printf("no file %s exist or has no permission to read\n!", m_pTrsFilename);
         return TCL_ERROR;
@@ -3013,7 +3013,7 @@ rcpTRSCompiler::trs_compiler()
         return TCL_ERROR;
     }
 
-    int iRet = Tcl_EvalFile(m_pInterp, m_pTrsFilename);
+    int iRet = Tcl_EvalFile(m_pInterp, m_pTrsFilename.c_str());
     if(iRet == TCL_ERROR)
     {
         printf("\nERROR occurs at line %d: %s\n", m_pInterp->errorLine,
@@ -3204,16 +3204,16 @@ rcpTRSCompiler::~rcpTRSCompiler()
     m_fPvrs.close();
 }
 
-rcpTRSCompiler::rcpTRSCompiler(char* pInputFile, char* pOutPvrsFile,  
-                               char* pTrsArg)
+rcpTRSCompiler::rcpTRSCompiler(const std::string &pInputFile, const std::string &pOutPvrsFile,
+                               const std::string &pTrsArg)
 {
 	m_pTrsFilename  = pInputFile;
 	m_pPvrsFileName = pOutPvrsFile;
 	m_pTrsArg       = pTrsArg;
 
-    if( NULL == m_pPvrsFileName )
+    if( m_pPvrsFileName.empty() )
     {
-    	m_pPvrsFileName = const_cast<char*>(".trs2pvrs.tmp");
+        m_pPvrsFileName = ".trs2pvrs.tmp";
     }
 
     m_pInterp = g_warpper_CreateInterp();
@@ -3230,5 +3230,5 @@ rcpTRSCompiler::rcpTRSCompiler(char* pInputFile, char* pOutPvrsFile,
 const char*
 rcpTRSCompiler::getPvrsFileName()
 {
-    return m_pPvrsFileName;
+    return m_pPvrsFileName.c_str();
 }

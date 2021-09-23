@@ -93,9 +93,10 @@ public:
 
     typedef std::map<std::string, NAME_VALUE> DEFINITION_MAP;
 
-    void initial();
+    void initial(hvUInt32 nGlobalLine = 0);
 
     bool execute();
+    static hvUInt32 lastGlobalLine() { return m_sgnGlobalLineNo; }
 
     hvUInt32 getIncludeFileVectorSize();
     std::string getIncludeFile(hvUInt32 index);
@@ -114,11 +115,16 @@ private:
     void processEndif(const std::string &sLineBuf);
     void processPragma(const std::string &sLineBuf);
 
+    void process_GetLayerArgs(std::string sLineBuf);
+    void process_SetLayer(std::string &sLineBuf);
+
 private:
     bool                  m_convertSwitch;
     const char           *m_pFileName;
     std::ofstream        &m_fOutStream;
     std::vector<std::string> 		m_vIncludeFile;
+
+    std::set<std::string>   m_sLayerArgs;
 
     static std::set<std::string>    m_sgsetFileCollection;
     static hvUInt32                 m_sgnGlobalLineNo;

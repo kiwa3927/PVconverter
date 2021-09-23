@@ -23,7 +23,7 @@ class rcpTRSCompiler
     };
 
 public:
-    rcpTRSCompiler(char* pInputFile, char* pOutPvrsFile = NULL, char* pTrsArg = NULL);
+    rcpTRSCompiler(const std::string& pInputFile, const std::string& pOutPvrsFile = "", const std::string& pTrsArg = "");
 
 
     ~rcpTRSCompiler();
@@ -113,9 +113,9 @@ private:
 private:
     static bool          m_isInRulecheck;
     static std::ofstream m_fPvrs;
-    static char*   		 m_pTrsArg;
-    static char*         m_pTrsFilename;
-    static char*         m_pPvrsFileName;
+    static std::string   m_pTrsArg;
+    static std::string   m_pTrsFilename;
+    static std::string   m_pPvrsFileName;
     static Tcl_Interp*   m_pInterp;
 
     static std::vector<std::string> *m_pvSourceFiles;

@@ -4,6 +4,7 @@
 
 #include <string.h>
 #include <fstream>
+#include <sstream>
 #include <sys/stat.h>
 
 #include "public/manager/rcErrorManager.h"
@@ -92,12 +93,12 @@ judgeFirstDirective(const std::string &sLineValue)
     return INVALID;
 }
 
-void rcsPreProcessor_T::initial()
+void rcsPreProcessor_T::initial(hvUInt32 nGlobalLine)
 {
     m_sgmapNameDefinition.clear();
     m_sgsetFileCollection.clear();
     m_sgvConditionalsStack.clear();
-    m_sgnGlobalLineNo = 0;
+    m_sgnGlobalLineNo = nGlobalLine;
     m_sgisEnabled     = true;
 
     m_vIncludeFile.clear();
@@ -201,6 +202,44 @@ split(std::vector<std::string> &result, std::string &input, const char* regex)
 	result.push_back(input.substr(pos,input.length()-pos));
 }
 
+void rcsPreProcessor_T::process_GetLayerArgs(std::string sLineBuf)
+{
+	std::string sArgs = sLineBuf.substr(sizeof("tvf::GET_LAYER_ARGS"));
+	std::stringstream ssArgs(sArgs);
+	std::string sLayerName;
+	while(ssArgs >> sLayerName)
+	{
+		m_sLayerArgs.insert(sLayerName);
+	}
+
+}
+
+void rcsPreProcessor_T::process_SetLayer(std::string &sLineBuf)
+{
+	std::set<string>::iterator iter = m_sLayerArgs.begin();
+	while(iter != m_sLayerArgs.end())
+	{
+		string sVarLayer = "$" + *iter;
+		std::string::size_type nPos = sLineBuf.find(sVarLayer);
+		if(std::string::npos != nPos)
+		{
+			sLineBuf.insert(nPos," ");
+		}
+		iter++;
+	}
+
+
+	std::string::size_type nEnd = sLineBuf.find('=');
+	std::string::size_type nBegin = sizeof("tvf::SETLAYER");
+	std::string sDefineLayer = sLineBuf.substr(nBegin,nEnd-nBegin);
+	std::stringstream ssArgs(sDefineLayer);
+	std::string sLayerName;
+	while(ssArgs >> sLayerName)
+	{
+		m_sLayerArgs.insert(sLayerName);
+	}
+}
+
 bool
 rcsPreProcessor_T::execute()
 {
@@ -217,11 +256,33 @@ rcsPreProcessor_T::execute()
 
     while(std::getline(reader, sLineBuf))
     {
+#if 0
+        std::cout << "INDEX: " << m_pFileName << " " << m_sgnGlobalLineNo << " " << nLocalLineNo <<" " << sLineBuf <<std::endl;
+#endif
         s_errManager.MapLineIndex(++m_sgnGlobalLineNo, ++nLocalLineNo,
                                   std::string(m_pFileName));
 
         std::string sValue = sLineBuf;
+        std::string::size_type nPos = sValue.find("\\$");
+        while(nPos != std::string::npos)
+        {
+        	sValue.insert(nPos, "\\");
+        	nPos = sValue.find("\\$", nPos + 2);
+        }
         trim(sLineBuf);
+
+
+        if(string::npos != sLineBuf.find("tvf::GET_LAYER_ARGS "))
+        {
+        	process_GetLayerArgs(sLineBuf);
+
+        }
+        if(string::npos != sLineBuf.find("tvf::SETLAYER "))
+		{
+        	process_SetLayer(sValue);
+
+		}
+
         switch(judgeFirstDirective(sLineBuf))
         {
             case INCL:
@@ -566,8 +627,8 @@ rcsPreProcessor_T::processInclude(const std::string &sLineBuf)
                 {
                     std::string sSvrfFileName = getTvf2SvrfTmpFileName();
                     fileRemover.setFile(sSvrfFileName);
-                    rcsTVFCompiler_T tvfCompiler(const_cast<char*>(sFilePath.c_str()),
-                                                 const_cast<char*>(sSvrfFileName.c_str()));
+                    rcsTVFCompiler_T tvfCompiler(sFilePath,
+                                                 sSvrfFileName);
 
                     if (tvfCompiler.tvf_compiler() != TCL_OK)
                     {

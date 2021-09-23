@@ -12,7 +12,7 @@
 rcsManager_T *rcsManager_T::m_spManager = NULL;
 
 rcsManager_T::rcsManager_T() : m_sTmpFile(".svrf2pvrs.tmp"), m_sPVRSCmdPrefix("rcn::"),
-                               m_sImplicitLayerPrefix("pvrs_tmp_layer_"), m_pPVRSOutStream(NULL), m_pPVRSSumStream(NULL),
+                               m_sImplicitLayerPrefix("pvrs_tmp_layer_"), m_sImplicitLayerID(0), m_pPVRSOutStream(NULL), m_pPVRSSumStream(NULL),
                                m_nGlobalLineNo(0), m_isComment(false), m_isNewPvrs(false), m_isFlattenMacro(false),
                                m_isConvertSwitch(false), m_hasTmpLayerDefinition(false), m_needExpandTmpLayer(true),
                                m_isConvertIncludeFile(true), m_isIncludeFile(false), m_isCallFromSetLayerCommand(false),
@@ -174,6 +174,22 @@ rcsManager_T::isTvf2Trs() const
 }
 
 void
+rcsManager_T::setTrsFlag(bool isTvf)
+{
+	m_isTrsFlag = isTvf;
+
+
+
+
+}
+
+bool
+rcsManager_T::isTrsFlag() const
+{
+    return m_isTrsFlag;
+}
+
+void
 rcsManager_T::setFirstTime(bool isFirst)
 {
 	m_isFirstTime = isFirst;
@@ -242,6 +258,11 @@ void
 rcsManager_T::setImplicitLayerPrefix(const std::string &sPrefix)
 {
     m_sImplicitLayerPrefix = sPrefix;
+}
+
+bool rcsManager_T::isTmpLayer(const std::string &sLayerName) const
+{
+    return 0 == strncmp(sLayerName.c_str(), m_sImplicitLayerPrefix.c_str(), m_sImplicitLayerPrefix.size());
 }
 
 const hvUInt32
@@ -315,7 +336,7 @@ rcsManager_T::getFileText() const
     return m_vFileText;
 }
 
-void
+bool
 rcsManager_T::beginWrite()
 {
     if(m_pPVRSOutStream == NULL)
@@ -325,6 +346,8 @@ rcsManager_T::beginWrite()
 
     if(m_pPVRSSumStream == NULL)
         m_pPVRSSumStream = new std::ofstream("svrf2pvrs.log");
+
+    return m_pPVRSOutStream->is_open();
 }
 
 void

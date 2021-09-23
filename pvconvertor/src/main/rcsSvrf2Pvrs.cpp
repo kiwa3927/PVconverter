@@ -117,12 +117,13 @@ rcsSvrf2Pvrs::executeForTvfCommand(std::string &script)
 {
     try
     {
-        FILE *pFile = fopen("SVRF generated from TVF", "w");
+        static const char *pSvrfGenFromTvf = ".svrfgenformtvf";
+        FILE *pFile = fopen(pSvrfGenFromTvf, "w");
         fputs(script.c_str(), pFile);
         fclose(pFile);
 
         std::ofstream outFile(rcsManager_T::getInstance()->getTmpFileName());
-        rcsPreProcessor_T processor("SVRF generated from TVF", true, outFile);
+        rcsPreProcessor_T processor(pSvrfGenFromTvf, true, outFile);
         processor.initial();
         processor.execute();
         outFile.flush();
@@ -137,13 +138,24 @@ rcsSvrf2Pvrs::executeForTvfCommand(std::string &script)
         std::map<hvUInt32, std::pair<hvUInt32, bool> > blankLinesBefore;
         rcsLexMacroParser_T macroparser(tokens, blankLinesBefore, vUnstoredCommentLineNumbers, false);
         macroparser.parse();
-        rcsSynConvertor convertor(tokens);
+
+        bool bIsRunTVF = false;
+		if(rcsManager_T::getInstance()->isTrsFlag())
+		{
+			bIsRunTVF = false;
+		}
+		else
+		{
+			bIsRunTVF = true;
+		}
+
+        rcsSynConvertor convertor(tokens,bIsRunTVF);
         rcsSynRootNode_T *pNode = convertor.execute(blankLinesBefore);
 
         delete pNode;
 
         remove(rcsManager_T::getInstance()->getTmpFileName());
-        remove("SVRF generated from TVF");
+        remove(pSvrfGenFromTvf);
     }
     catch(const rcErrorNode_T &error)
     {
@@ -164,6 +176,7 @@ rcsSvrf2Pvrs::processIncludeFileRespectively(rcsPreProcessor_T &preProcessor)
 
         for(hvUInt32 i = 0; i < preProcessor.getIncludeFileVectorSize(); i++)
         {
+            convertor.setLastGlobalLine(rcsPreProcessor_T::lastGlobalLine());
         	std::string includeFileName = preProcessor.getIncludeFile(i);
         	size_t it;
         	std::string inputFileName;
@@ -205,7 +218,14 @@ rcsSvrf2Pvrs::execute(std::string sInFile, const std::string &sSwitchFile,
     try
     {
         rcsManager_T::getInstance()->setPVRSOutFile(sOutFile);
-        rcsManager_T::getInstance()->beginWrite();
+        bool bOpen = rcsManager_T::getInstance()->beginWrite();
+        if (!bOpen)
+        {
+            s_errManager.addError(rcErrorNode_T(rcErrorNode_T::FATAL, OPEN1, 0, sOutFile), out);
+            s_errManager.Report(out);
+            rcsManager_T::getInstance()->endWrite();
+            return false;
+        }
         rcsManager_T::getInstance()->setOutputComment(outComment);
         rcsManager_T::getInstance()->setOutputSvrfComment(outSvrf);
         rcsManager_T::getInstance()->setExpandTmpLayer(needExpandTmpLayer);
@@ -214,6 +234,7 @@ rcsSvrf2Pvrs::execute(std::string sInFile, const std::string &sSwitchFile,
         rcsManager_T::getInstance()->setConvertSwitch(convertSwitch);
         rcsManager_T::getInstance()->setConvertIncludeFile(convertIncludeFile);
         rcsManager_T::getInstance()->setTvf2Trs(trsFlag);
+        rcsManager_T::getInstance()->setTrsFlag(trsFlag);
         rcsManager_T::getInstance()->setTmpLayerSuffix(sTmpLayerSuffix);
 
         if(!sSwitchFile.empty())
@@ -265,7 +286,7 @@ rcsSvrf2Pvrs::execute(std::string sInFile, const std::string &sSwitchFile,
 
         if(isTvf && rcsManager_T::getInstance()->isTvf2Trs())
         {
-            rcsTvfConvertor convertor(sInFile.c_str());
+            rcsTvfConvertor convertor(sInFile);
             convertor.execute();
             rcsManager_T::getInstance()->endWrite();
 
@@ -279,7 +300,7 @@ rcsSvrf2Pvrs::execute(std::string sInFile, const std::string &sSwitchFile,
         }
         else if(isTvf && !rcsManager_T::getInstance()->isTvf2Trs())
         {
-            rcsTVFCompiler_T tvf2svrf(const_cast<char*>(sInFile.c_str()));
+            rcsTVFCompiler_T tvf2svrf(sInFile);
 
             int n = tvf2svrf.tvf_compiler();
             if(n != 0)
@@ -321,7 +342,7 @@ rcsSvrf2Pvrs::execute(std::string sInFile, const std::string &sSwitchFile,
             return false;
         }
         rcsPreProcessor_T processor(sInFile.c_str(), convertSwitch, outFile);
-        processor.initial();
+        processor.initial(this->getLastGlobalLine());
         processor.execute();
         outFile.flush();
         outFile.close();
@@ -366,6 +387,8 @@ rcsSvrf2Pvrs::execute(std::string sInFile, const std::string &sSwitchFile,
 		rcsLexMacroParser_T macroparser(tokens, blankLinesBefore, vUnstoredCommentLineNumbers, flattenMacro);
 		macroparser.parse();
 
+        transGlobalLineForIncFile(tokens);
+
 #ifdef __DEBUG__
         {
 		    std::cout << "\n----------- AFTER MACRO PARSER ----------------\n";
@@ -375,6 +398,10 @@ rcsSvrf2Pvrs::execute(std::string sInFile, const std::string &sSwitchFile,
 #endif
 
 		rcsSynConvertor convertor(tokens);
+
+        if (!flattenMacro)
+            convertor.setMacroParaMap(&macroparser.m_macrosParaSizeMap);
+
 		rcsSynRootNode_T *pNode = convertor.execute(blankLinesBefore);
 
 		delete pNode;
@@ -410,8 +437,14 @@ rcsSvrf2Pvrs::executeIncludeFile(std::string sInFile, const std::string &sSwitch
     try
     {
         rcsManager_T::getInstance()->setPVRSOutFile(sOutFile);
-        rcsManager_T::getInstance()->beginWrite();
-
+        bool bOpen = rcsManager_T::getInstance()->beginWrite();
+        if (!bOpen)
+        {
+            s_errManager.addError(rcErrorNode_T(rcErrorNode_T::FATAL, OPEN1, 0, sOutFile), out);
+            s_errManager.Report(out);
+            rcsManager_T::getInstance()->endWrite();
+            return false;
+        }
         bool convertSwitch 		= rcsManager_T::getInstance()->isConvertSwitch();
         bool flattenMacro 		= rcsManager_T::getInstance()->isFlattenMacro();
 
@@ -448,7 +481,7 @@ rcsSvrf2Pvrs::executeIncludeFile(std::string sInFile, const std::string &sSwitch
 
         if(isTvf && rcsManager_T::getInstance()->isTvf2Trs())
         {
-            rcsTvfConvertor convertor(sInFile.c_str());
+            rcsTvfConvertor convertor(sInFile);
             convertor.execute();
 
             if(!rcsManager_T::getInstance()->isConvertIncludeFile())
@@ -464,7 +497,7 @@ rcsSvrf2Pvrs::executeIncludeFile(std::string sInFile, const std::string &sSwitch
         }
         else if(isTvf && !rcsManager_T::getInstance()->isTvf2Trs())
         {
-            rcsTVFCompiler_T tvf2svrf(const_cast<char*>(sInFile.c_str()));
+            rcsTVFCompiler_T tvf2svrf(sInFile);
 
             int n = tvf2svrf.tvf_compiler();
             if(n != 0)
@@ -562,7 +595,7 @@ rcsSvrf2Pvrs::executeTvfPreprocess(std::string sInFile, const std::string &sOutF
 		out << "------        " << fileType << "RULE FILE PPEPROCESSOR BEGIN           ------\n\n";
 		out << "\n";
 
-		rcsTVFCompiler_T tvf2svrf(const_cast<char*>(sInFile.c_str()), const_cast<char*>(sOutFile.c_str()));
+        rcsTVFCompiler_T tvf2svrf(sInFile, sOutFile);
 	    int n = tvf2svrf.tvf_compiler();
 	    if(n != 0)
 	    {
@@ -588,7 +621,7 @@ rcsSvrf2Pvrs::executeTvfPreprocess(std::string sInFile, const std::string &sOutF
 		out << "------        " << fileType << "RULE FILE PPEPROCESSOR BEGIN           ------\n\n";
 		out << "\n";
 
-		rcpTRSCompiler trs2pvrs(const_cast<char*>(sInFile.c_str()), const_cast<char*>(sOutFile.c_str()));
+        rcpTRSCompiler trs2pvrs(sInFile.c_str(), sOutFile.c_str());
 	    int n = trs2pvrs.trs_compiler();
 	    if(n != 0)
 	    {
@@ -667,7 +700,7 @@ rcsSvrf2Pvrs::findLineNumInTvfFun(std::string command)
 		}
 		mStrSearchBegin = found + command.size();
 	}
-	return nLines;
+    return nLines;
 }
 
 #ifdef DEBUG
@@ -684,6 +717,7 @@ printTokenStream(std::list<rcsToken_T>::iterator first, std::list<rcsToken_T>::i
         }
         std::cout << first->sValue << "(" << first->eType << "," << first->eKeyType << ") ";
         first++;
+        std::cout<< "\n=#=";
     }
     std::cout << std::endl;
 }

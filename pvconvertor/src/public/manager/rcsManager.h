@@ -9,7 +9,8 @@
 #include <string>
 #include <vector>
 #include "rcspragmamanager.h"
-
+#include "public/manager/rcsLithoFileSpec.h"
+class rcsSynLayerDefinitionNode_T;
 class rcsManager_T
 {
 public:
@@ -30,13 +31,20 @@ public:
     void setTvf2Trs(bool isTvf);
     bool isTvf2Trs() const;
 
+    void setTrsFlag(bool isTvf);
+    bool isTrsFlag() const;
+
     void setCallFromSetLayerCommand(bool isSetLayer);
     bool isCallFromSetLayerCommand() const;
+
+    std::map<std::string, rcsSynLayerDefinitionNode_T*>& getTmpLayers() { return this->m_vTmpLayers; }
+
+    std::map<std::string, rcsLithoFileSpec>& getLithoFileSpec(){ return this->m_vLithoFileSpec; }
 
     std::ostream&  getPVRSOutStream() const;
     std::ostream&  getPVRSSumStream() const;
 
-    void beginWrite();
+    bool beginWrite();
     void endWrite();
 
     void setPVRSOutFile(const std::string &sFileName);
@@ -87,6 +95,7 @@ public:
 
     const std::string &getImplicitLayerPrefix() const;
     void setImplicitLayerPrefix(const std::string &sPrefix);
+    bool isTmpLayer(const std::string &sLayerName) const;
 
     const hvUInt32 getImplicitLayerID() const;
     void setImplicitLayerID(const hvUInt32 id);
@@ -112,31 +121,34 @@ private:
     std::string    m_sTmpFile;
     std::string    m_sPVRSCmdPrefix;
     std::string    m_sImplicitLayerPrefix;
-    hvUInt32	   m_sImplicitLayerID;
+    hvUInt32       m_sImplicitLayerID;
     std::ofstream *m_pPVRSOutStream;
     std::ofstream *m_pPVRSSumStream;
 
-    std::string	   m_sTmpLayerSuffix;
+    std::string       m_sTmpLayerSuffix;
 
     hvUInt32       m_nGlobalLineNo;
 
 private:
     std::map<hvUInt32, std::string> m_vFileText;
     std::map<hvUInt32, std::string> m_vCheckComment;
-    std::vector<std::string> 		m_vIncludeFile;
+    std::vector<std::string>         m_vIncludeFile;
+    std::map<std::string, rcsSynLayerDefinitionNode_T*> m_vTmpLayers;
+    std::map<std::string, rcsLithoFileSpec>              m_vLithoFileSpec;
     rcsPragmaManager m_pragmaManager;
 
 private:
-    bool m_outComment; 					
-    bool m_isComment;					
-    bool m_isGui;						
-    bool m_isNewPvrs;					
-    bool m_isFlattenMacro;				
-    bool m_isConvertSwitch; 			
-    bool m_isConvertIncludeFile;		
-    bool m_needExpandTmpLayer;			
-    bool m_backupExpandTmpLayer;		
-    bool m_isTvf2Trs;					
+    bool m_outComment;
+    bool m_isComment;
+    bool m_isGui;
+    bool m_isNewPvrs;
+    bool m_isFlattenMacro;
+    bool m_isConvertSwitch;
+    bool m_isConvertIncludeFile;
+    bool m_needExpandTmpLayer;
+    bool m_backupExpandTmpLayer;
+    bool m_isTvf2Trs;
+    bool m_isTrsFlag;
     bool m_hasTmpLayerDefinition;
     bool m_isIncludeFile;
     bool m_isIncludeFileHasPrefix;      

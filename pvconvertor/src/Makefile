@@ -1,7 +1,7 @@
 DATE = $(shell date +"%Y%m%0e%H%Mull")
 
-CC	= gcc -pipe $(CFLAGS) $(INCFLAGS)
-CXX	= g++ -pipe $(CFLAGS) $(INCFLAGS)
+CC	= gcc -pipe $(CFLAGS) $(INCFLAGS) -Werror=return-type
+CXX	= g++ -pipe $(CFLAGS) $(INCFLAGS) -Werror=return-type
 ASM = as -Qy
 LINKER = g++
 

@@ -499,6 +499,11 @@ rcErrorMsg_T vSvrfErrorMsg[] =
     {"CON1", "this operation or specification does not have corresponding command in pvrs: "},
     {"CON2", "this option does not have corresponding option in the pvrs: "},
     {"CON3", "the encrypted lines can not be converted to pvrs."},
+
+    {"ERCTVF1", "missing or invalid library name for this operation: "},
+    {"ERCTVF2", "missing or invalid procedure names' list for this operation: "},
+    {"ERCTVF3", "duplicate check name for this operation: "},
+    {"ERCTVF4", "missing or invalid check name for this operation: "},
 };
 
 const rcErrorMsg_T* rcErrManager_T::m_pvErrMsg = NULL;
@@ -561,7 +566,7 @@ rcErrManager_T::reportError(const rcErrorNode_T& error, std::ostream &out)
                 m_mapLineIndex.find(error.m_nLineNo);
         if(iter != m_mapLineIndex.end())
         {
-            out << (iter->second.second) << " of " << (iter->second.first);
+            out << (iter->second.second) << " of " << '\"' <<(iter->second.first) << '\"';
         }
     }
 

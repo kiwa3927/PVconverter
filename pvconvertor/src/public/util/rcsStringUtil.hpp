@@ -110,4 +110,25 @@ void tokenize(Container &v, const std::string &str,
 
 bool isTclPackageLine(const std::string &line);
 
+inline bool isCoordinateValue(std::string str)
+{
+	trim(str);
+	for(int i = 0; i<str.size(); i++)
+	{
+		char chTmp = str[i];
+		if(!isdigit(chTmp))
+		{
+			if((chTmp != '-') && (chTmp != '+') && !isspace(chTmp)
+			&& (chTmp != '(') && (chTmp != ')') && (chTmp != '.'))
+			{
+				return false;
+			}
+		}
+	}
+
+
+	return true;
+
+}
+
 #endif 

@@ -20,6 +20,9 @@ public:
 
     virtual void accept(rcsNodeVisitor_T &);
 
+    rcsSynNode_T * refLastNodeForCMacro()
+    { if (m_vChildNodes.empty()) return NULL; return m_vChildNodes.back(); }
+
 private:
 
     std::vector<rcsSynNode_T *> m_vChildNodes;

@@ -506,6 +506,9 @@ rcsLexMacroParser_T::extractMacro(std::list<rcsToken_T>::iterator &iBegin)
             }
 
             toLower(sMacroName);
+
+            m_macrosParaSizeMap.insert(std::make_pair(sMacroName, vParas.size()));
+
             if(needReplaceMacro)
             {
                 std::map<std::string, MACRO_TOKENS>::iterator iterInsert = m_mapMacros.lower_bound(sMacroName);
@@ -952,12 +955,14 @@ rcsLexMacroParser_T::parseBuildInLang<false>()
                                             std::string sCode = (j != std::string::npos) ? sLine.substr(i, j - i)
                                                                                          : sLine.substr(i);
 
-                                            if(strcasecmp(sCode.c_str(), "device::dfm_vec_measurements") == 0)
+                                            if(strcasecmp(sCode.c_str(), "device::dfm_vec_measurements") == 0 ||
+                                                    strcasecmp(sCode.c_str(), "dfm_vec_measurements") == 0)
                                             {
                                                 sResult += "device::convert_to_enc";
                                                 i = j != std::string::npos ? j - 1 : sLine.size();
                                             }
-                                            else if(strcasecmp(sCode.c_str(), "device::scaled_dfm_vec_measurements") == 0)
+                                            else if(strcasecmp(sCode.c_str(), "device::scaled_dfm_vec_measurements") == 0 ||
+                                                    strcasecmp(sCode.c_str(), "scaled_dfm_vec_measurements") == 0)
                                             {
                                                 sResult += "device::convert_to_scaled_enc";
                                                 i = j != std::string::npos ? j - 1 : sLine.size();
@@ -1006,15 +1011,51 @@ rcsLexMacroParser_T::parseBuildInLang<false>()
                     skipBlankSpaceToken(iToken);
                     if(iToken->eType != SEPARATOR || iToken->sValue != "(")
                     {
-                        if(iter->eType == IDENTIFIER_NAME && (strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 ||
-                           strncasecmp(iter->sValue.c_str(), "tvf_numeric_function", 20) == 0))
+                        if(iter->eType == IDENTIFIER_NAME &&
+                           (strncasecmp(iter->sValue.c_str(), "tvf_number_function", 19) == 0 ||
+                            strncasecmp(iter->sValue.c_str(), "tvf_number_func", 15) == 0 ||
+                            strncasecmp(iter->sValue.c_str(), "tvf_number_fun", 14) == 0 ||
+                            strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0 ||
+                            strncasecmp(iter->sValue.c_str(), "tvf_num_func", 12) == 0 ||
+                            strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 ||
+                            strncasecmp(iter->sValue.c_str(), "tvf_numeric_function", 20) == 0))
                         {
                             
                             token.sValue += "TRS_NUMBER_FUNCTION";
-                            if(strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 && iter->sValue.size() > 11)
-                                token.sValue += iter->sValue.substr(11);
+                            if(strncasecmp(iter->sValue.c_str(), "tvf_number_function", 19) == 0)
+                            {
+                                if(iter->sValue.size() > 19)
+                                    token.sValue += iter->sValue.substr(19);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_number_func", 15) == 0)
+                            {
+                                if(iter->sValue.size() > 15)
+                                    token.sValue += iter->sValue.substr(15);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_number_fun", 14) == 0)
+                            {
+                                if(iter->sValue.size() > 14)
+                                    token.sValue += iter->sValue.substr(14);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0)
+                            {
+                                if(iter->sValue.size() > 16)
+                                    token.sValue += iter->sValue.substr(16);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_num_func", 12) == 0)
+                            {
+                                if(iter->sValue.size() > 12)
+                                    token.sValue += iter->sValue.substr(12);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0)
+                            {
+                                if(iter->sValue.size() > 11)
+                                    token.sValue += iter->sValue.substr(11);
+                            }
                             else if(iter->sValue.size() > 20)
+                            {
                                 token.sValue += iter->sValue.substr(20);
+                            }
                         }
                         else if(iter->eType == IDENTIFIER_NAME && (strncasecmp(iter->sValue.c_str(), "tvf_str_fun", 11) == 0 ||
                                 strncasecmp(iter->sValue.c_str(), "tvf_string_function", 19) == 0))
@@ -1429,21 +1470,53 @@ rcsLexMacroParser_T::parseBuildInLang<false>()
                         {
                             token.sValue += "is_value_not_exist";
                         }
-                        else if(strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0)
+                        else if( (strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0) ||
+                                 (strncasecmp(iter->sValue.c_str(), "tvf_num_func", 12) == 0) ||
+                                 (strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0) )
                         {
                             
                         	token.sValue += "TRS_NUMBER_FUNCTION";
-                            if(iter->sValue.size() > 15)
-                                token.sValue += iter->sValue.substr(16);
+                            if(strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0)
+                            {
+                                if(iter->sValue.size() > 16)
+                                    token.sValue += iter->sValue.substr(16);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_num_func", 12) == 0)
+                            {
+                                if(iter->sValue.size() > 12)
+                                    token.sValue += iter->sValue.substr(12);
+                            }
+                            else if(iter->sValue.size() > 11)
+                            {
+                                token.sValue += iter->sValue.substr(11);
+                            }
                         }
-                        else if(strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 ||
-                                strncasecmp(iter->sValue.c_str(), "tvf_numeric_function", 20) == 0)
+                        else if( (strncasecmp(iter->sValue.c_str(), "tvf_number_function", 19) == 0) ||
+                                 (strncasecmp(iter->sValue.c_str(), "tvf_number_func", 15) == 0) ||
+                                 (strncasecmp(iter->sValue.c_str(), "tvf_number_fun", 14) == 0) )
+                        {
+
+                            token.sValue += "TRS_NUMBER_FUNCTION";
+                            if(strncasecmp(iter->sValue.c_str(), "tvf_number_function", 19) == 0)
+                            {
+                                if(iter->sValue.size() > 19)
+                                    token.sValue += iter->sValue.substr(19);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_number_func", 15) == 0)
+                            {
+                                if(iter->sValue.size() > 15)
+                                    token.sValue += iter->sValue.substr(15);
+                            }
+                            else if(iter->sValue.size() > 14)
+                            {
+                                token.sValue += iter->sValue.substr(14);
+                            }
+                        }
+                        else if(strncasecmp(iter->sValue.c_str(), "tvf_numeric_function", 20) == 0)
                         {
                             
                             token.sValue += "TRS_NUMBER_FUNCTION";
-                            if(strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 && iter->sValue.size() > 11)
-                                token.sValue += iter->sValue.substr(11);
-                            else if(iter->sValue.size() > 20)
+                            if(iter->sValue.size() > 20)
                                 token.sValue += iter->sValue.substr(20);
                         }
                         else if(strncasecmp(iter->sValue.c_str(), "tvf_numeric_fun", 15) == 0)
@@ -1746,7 +1819,7 @@ rcsLexMacroParser_T::constructBuildInFragments()
 #endif
 
     {
-        
+        // && may be change 2  "||" , it will core at someday, commented by st.233
         if (vForwardsFragments.empty() && vBackwardsFragments.empty()) return;
         std::reverse(vBackwardsFragments.begin(), vBackwardsFragments.end());
         FRAGMENT_CONTAINER::iterator itF = vForwardsFragments.begin();
@@ -1860,6 +1933,9 @@ rcsLexMacroParser_T::parseBuildInLang<true>()
         {
             std::list<rcsToken_T>::iterator begin = iter;
             rcsToken_T token(BUILT_IN_LANG, iter->nLineNo, iter->sValue.c_str());
+            if (iter->eType == PRO_KEYWORD)
+                token.sValue += "\n";
+
             token.namescopes = iter->namescopes;
             while(++iter != m_listTokenStream.end())
             {
@@ -2027,12 +2103,14 @@ rcsLexMacroParser_T::parseBuildInLang<true>()
                                             std::string sCode = (j != std::string::npos) ? sLine.substr(i, j - i)
                                                                                          : sLine.substr(i);
 
-                                            if(strcasecmp(sCode.c_str(), "device::dfm_vec_measurements") == 0)
+                                            if(strcasecmp(sCode.c_str(), "device::dfm_vec_measurements") == 0 ||
+                                                    strcasecmp(sCode.c_str(), "dfm_vec_measurements") == 0)
                                             {
                                                 sResult += "device::convert_to_enc";
                                                 i = j != std::string::npos ? j - 1 : sLine.size();
                                             }
-                                            else if(strcasecmp(sCode.c_str(), "device::scaled_dfm_vec_measurements") == 0)
+                                            else if(strcasecmp(sCode.c_str(), "device::scaled_dfm_vec_measurements") == 0 ||
+                                                    strcasecmp(sCode.c_str(), "scaled_dfm_vec_measurements") == 0)
                                             {
                                                 sResult += "device::convert_to_scaled_enc";
                                                 i = j != std::string::npos ? j - 1 : sLine.size();
@@ -2085,15 +2163,51 @@ rcsLexMacroParser_T::parseBuildInLang<true>()
                     skipBlankSpaceToken(iToken);
                     if(iToken->eType != SEPARATOR || iToken->sValue != "(")
                     {
-                        if(iter->eType == IDENTIFIER_NAME && (strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 ||
+                        if(iter->eType == IDENTIFIER_NAME &&
+                          (strncasecmp(iter->sValue.c_str(), "tvf_number_function", 19) == 0 ||
+                           strncasecmp(iter->sValue.c_str(), "tvf_number_func", 15) == 0 ||
+                           strncasecmp(iter->sValue.c_str(), "tvf_number_fun", 14) == 0 ||
+                           strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0 ||
+                           strncasecmp(iter->sValue.c_str(), "tvf_num_func", 12) == 0 ||
+                           strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 ||
                            strncasecmp(iter->sValue.c_str(), "tvf_numeric_function", 20) == 0))
                         {
                             
                             token.sValue += "TRS_NUMBER_FUNCTION";
-                            if(strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 && iter->sValue.size() > 11)
-                                token.sValue += iter->sValue.substr(11);
+                            if(strncasecmp(iter->sValue.c_str(), "tvf_number_function", 19) == 0)
+                            {
+                                if(iter->sValue.size() > 19)
+                                    token.sValue += iter->sValue.substr(19);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_number_func", 15) == 0)
+                            {
+                                if(iter->sValue.size() > 15)
+                                    token.sValue += iter->sValue.substr(15);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_number_fun", 14) == 0)
+                            {
+                                if(iter->sValue.size() > 14)
+                                    token.sValue += iter->sValue.substr(14);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0)
+                            {
+                                if(iter->sValue.size() > 16)
+                                    token.sValue += iter->sValue.substr(16);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_num_func", 12) == 0)
+                            {
+                                if(iter->sValue.size() > 12)
+                                    token.sValue += iter->sValue.substr(12);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0)
+                            {
+                                if(iter->sValue.size() > 11)
+                                    token.sValue += iter->sValue.substr(11);
+                            }
                             else if(iter->sValue.size() > 20)
+                            {
                                 token.sValue += iter->sValue.substr(20);
+                            }
                         }
                         else if(iter->eType == IDENTIFIER_NAME && (strncasecmp(iter->sValue.c_str(), "tvf_str_fun", 11) == 0 ||
                                 strncasecmp(iter->sValue.c_str(), "tvf_string_function", 19) == 0))
@@ -2500,21 +2614,53 @@ rcsLexMacroParser_T::parseBuildInLang<true>()
                         {
                             token.sValue += "is_value_not_exist";
                         }
-                        else if(strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0)
+                        else if( (strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0) ||
+                                 (strncasecmp(iter->sValue.c_str(), "tvf_num_func", 12) == 0) ||
+                                 (strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0) )
                         {
-                            
+
                             token.sValue += "TRS_NUMBER_FUNCTION";
-                            if(iter->sValue.size() > 15)
-                                token.sValue += iter->sValue.substr(16);
-                        }
-                        else if(strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 ||
-                                strncasecmp(iter->sValue.c_str(), "tvf_numeric_function", 20) == 0)
-                        {
-                            
-                            token.sValue += "TRS_NUMBER_FUNCTION";
-                            if(strncasecmp(iter->sValue.c_str(), "tvf_num_fun", 11) == 0 && iter->sValue.size() > 11)
+                            if(strncasecmp(iter->sValue.c_str(), "tvf_num_function", 16) == 0)
+                            {
+                                if(iter->sValue.size() > 16)
+                                    token.sValue += iter->sValue.substr(16);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_num_func", 12) == 0)
+                            {
+                                if(iter->sValue.size() > 12)
+                                    token.sValue += iter->sValue.substr(12);
+                            }
+                            else if(iter->sValue.size() > 11)
+                            {
                                 token.sValue += iter->sValue.substr(11);
-                            else if(iter->sValue.size() > 20)
+                            }
+                        }
+                        else if( (strncasecmp(iter->sValue.c_str(), "tvf_number_function", 19) == 0) ||
+                                 (strncasecmp(iter->sValue.c_str(), "tvf_number_func", 15) == 0) ||
+                                 (strncasecmp(iter->sValue.c_str(), "tvf_number_fun", 14) == 0) )
+                        {
+
+                            token.sValue += "TRS_NUMBER_FUNCTION";
+                            if(strncasecmp(iter->sValue.c_str(), "tvf_number_function", 19) == 0)
+                            {
+                                if(iter->sValue.size() > 19)
+                                    token.sValue += iter->sValue.substr(19);
+                            }
+                            else if(strncasecmp(iter->sValue.c_str(), "tvf_number_func", 15) == 0)
+                            {
+                                if(iter->sValue.size() > 15)
+                                    token.sValue += iter->sValue.substr(15);
+                            }
+                            else if(iter->sValue.size() > 14)
+                            {
+                                token.sValue += iter->sValue.substr(14);
+                            }
+                        }
+                        else if(strncasecmp(iter->sValue.c_str(), "tvf_numeric_function", 20) == 0)
+                        {
+
+                            token.sValue += "TRS_NUMBER_FUNCTION";
+                            if(iter->sValue.size() > 20)
                                 token.sValue += iter->sValue.substr(20);
                         }
                         else if(strncasecmp(iter->sValue.c_str(), "tvf_numeric_fun", 15) == 0)

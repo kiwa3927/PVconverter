@@ -1451,37 +1451,17 @@ rcsSynNodeConvertor_T::convertExceptionDBSpec(rcsSynSpecificationNode_T *pNode)
         {
             switch(iter->eKeyType)
             {
-                case TOP:
+                case TOP_SPACE:
                 {
-                    if(++iter != pNode->end() && SECONDARY_KEYWORD == iter->eType &&
-                       SPACE == iter->eKeyType)
-                    {
-                        outputText("-coord_space", "top", nOption++);
-                        ++iter;
-                        continue;
-                    }
-                    else
-                    {
-                        --iter;
-                        throw rcErrorNode_T(rcErrorNode_T::ERROR, INP7,
-                                            iter->nLineNo, iter->sValue);
-                    }
+                    outputText("-coord_space", "top", nOption++);
+                    ++iter;
+                    continue;
                 }
-                case CELL:
+                case CELL_SPACE:
                 {
-                    if(++iter != pNode->end() && SECONDARY_KEYWORD == iter->eType &&
-                       SPACE == iter->eKeyType)
-                    {
-                        outputText("-coord_space", "cell", nOption++);
-                        ++iter;
-                        continue;
-                    }
-                    else
-                    {
-                        --iter;
-                        throw rcErrorNode_T(rcErrorNode_T::ERROR, INP7,
-                                            iter->nLineNo, iter->sValue);
-                    }
+                    outputText("-coord_space", "cell", nOption++);
+                    ++iter;
+                    continue;
                 }
                 case BY_CELL:
                 {
@@ -6193,19 +6173,9 @@ rcsSynNodeConvertor_T::convertCellNameSpec(rcsSynSpecificationNode_T *pNode)
                             outputText("-append", "trans", nOption);
                             break;
                         }
-                        case CELL:
+                        case CELL_SPACE:
                         {
-                            if(++iter != pNode->end() && SECONDARY_KEYWORD == iter->eType &&
-                               SPACE == iter->eKeyType)
-                            {
-                                outputText("-coord_space", "cell", nOption);
-                            }
-                            else
-                            {
-                                --iter;
-                                throw rcErrorNode_T(rcErrorNode_T::ERROR, INP7,
-                                                    iter->nLineNo, iter->sValue);
-                            }
+                            outputText("-coord_space", "cell", nOption);
                             break;
                         }
                         case ALL:
@@ -8373,10 +8343,12 @@ rcsSynNodeConvertor_T::convertDfmRDBCmd(rcsSynLayerOperationNode_T *pNode)
     hvUInt32 nOption = 0;
     if(pNode->getOperationType() == DFM_RDB)
         m_oPVRSStream << rcsManager_T::getInstance()->getPVRSCmdPrefix() << "dfm_rdb ";
+#if 0
     else if(pNode->getOperationType() == DFM_RDB_GDS)
         m_oPVRSStream << rcsManager_T::getInstance()->getPVRSCmdPrefix() << "dfm_rdb -format gds";
     else if(pNode->getOperationType() == DFM_RDB_OASIS)
         m_oPVRSStream << rcsManager_T::getInstance()->getPVRSCmdPrefix() << "dfm_rdb -format oasis";
+#endif
 
 
     hvUInt32 iLayer = 0;
@@ -8470,34 +8442,20 @@ rcsSynNodeConvertor_T::convertDfmRDBCmd(rcsSynLayerOperationNode_T *pNode)
                     --iter;
                     break;
                 }
-                case RESULT:
+                case RESULT_CELLS:
                 {
                     ++iter;
-                    if(iter != pNode->end() && iter->eType == SECONDARY_KEYWORD &&
-                       iter->eKeyType == CELLS)
-                    {
-                        ++iter;
-                        std::string sListName;
-                        if(getStringName(iter, pNode->end(), sListName))
-                            outputText("-result_cell_list", sListName.c_str(), nOption++);
-                        ++iter;
-                        continue;
-                    }
-                    --iter;
-                    break;
+                    std::string sListName;
+                    if(getStringName(iter, pNode->end(), sListName))
+                        outputText("-result_cell_list", sListName.c_str(), nOption++);
+                    ++iter;
+                    continue;
                 }
-                case ALL:
+                case ALL_CELLS:
                 {
                     ++iter;
-                    if(iter != pNode->end() && iter->eType == SECONDARY_KEYWORD &&
-                       iter->eKeyType == CELLS)
-                    {
-                        outputText("-all_cells", NULL, nOption++);
-                        ++iter;
-                        continue;
-                    }
-                    --iter;
-                    break;
+                    outputText("-all_cells", NULL, nOption++);
+                    continue;
                 }
                 case CHECKNAME:
                 {

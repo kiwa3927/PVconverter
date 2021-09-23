@@ -37,6 +37,8 @@ rcsFormat::execute()
 	writer.flush();
 	reader.close();
 	writer.close();
+
+    return true;
 }
 
 void

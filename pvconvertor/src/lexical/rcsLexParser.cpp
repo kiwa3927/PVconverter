@@ -118,7 +118,7 @@ rcsLexParser_T::parse(const char *pFileName, const char* pValue)
     hvInt32 eType = pLexer->yylex();
     bool isInBuildInLang = false;
     bool isComment       = false;
-    hvUInt32 nCommentLineNo;
+    hvUInt32 nCommentLineNo = 0;
     std::string sBuildInLangBegin;
     std::string sCommentValue;
     while(eType)
@@ -310,8 +310,7 @@ rcsLexParser_T::parse(const char *pFileName, const char* pValue)
                         
                     }
                     else if(rcsManager_T::getInstance()->outputComment() &&
-                            pLexer->lineno() != m_listTokenStream.back().nLineNo &&
-                            strncmp(pLexer->YYText(), "//", 2) == 0)
+                            pLexer->lineno() != m_listTokenStream.back().nLineNo)
                     {
                         m_listTokenStream.push_back(rcsToken_T(static_cast<TOKEN_TYPE>(eType),
                                                     pLexer->lineno(), pLexer->YYText()));

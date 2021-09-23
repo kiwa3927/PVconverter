@@ -13,14 +13,14 @@
 
 bool rcsSynPvrsConvertor::isPossibleNoParaKeyword(rcsSynSpecificationNode_T *pNode)
 {
-	switch(pNode->getSpecificationType())
-	{
-		case SOURCE_PRIMARY:
-		case PEX_REDUCE_RONLY:
-			return true;
-		default:
-			return false;
-	}
+    switch(pNode->getSpecificationType())
+    {
+        case SOURCE_PRIMARY:
+        case PEX_REDUCE_RONLY:
+            return true;
+        default:
+            return false;
+    }
 }
 
 void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T *pNode)
@@ -55,14 +55,19 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
 
     switch(pNode->getSpecificationType())
     {
-    	case LAYOUT_PATH:
-    	case LAYOUT_PATH2:
+        case LAYOUT_PATH:
+        case LAYOUT_PATH2:
         case LAYOUT_PRIMARY:
         case LAYOUT_PRIMARY2:
         case LAYOUT_SYSTEM:
         case LAYOUT_SYSTEM2:
-    		convLayoutInputSpec(pNode);
-    		break;
+            convLayoutInputSpec(pNode);
+            break;
+        case LAYOUT_PATH_WIDTH_MULTIPLE:
+        {
+            convLayoutPathWidthMultiple(pNode);
+            break;
+        }
         case DRC_MAXIMUM_RESULTS:
         case DRC_MAXIMUM_VERTEX:
         case ERC_MAXIMUM_RESULTS:
@@ -79,31 +84,31 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
         case DRC_MAXIMUM_UNATTACHED_LABEL_WARNINGS:
         case DRC_MAXIMUM_CELL_NAME_LENGTH:
         case DRC_MAXIMUM_RESULTS_NAR:
-        	convMaxLimitSpec(pNode);
-        	break;
+            convMaxLimitSpec(pNode);
+            break;
         case DRC_RESULTS_DATABASE:
         case ERC_RESULTS_DATABASE:
-        	convResultDBSpec(pNode);
-        	break;
+            convResultDBSpec(pNode);
+            break;
         case LVS_REPORT:
         case LVS_HEAP_DIRECTORY:
         case LAYER_DIRECTORY:
-        	convNameSpec(pNode);
-        	break;
+            convNameSpec(pNode);
+            break;
         case PRECISION:
         case LAYOUT_PRECISION:
-        	convPrecSpec(pNode);
-        	break;
+            convPrecSpec(pNode);
+            break;
         case RESOLUTION:
-        	convResolutionSpec(pNode);
-        	break;
+            convResolutionSpec(pNode);
+            break;
         case DRC_SUMMARY_REPORT:
         case ERC_SUMMARY_REPORT:
-        	convSumFileSpec(pNode);
-        	break;
+            convSumFileSpec(pNode);
+            break;
         case LAYER:
-        	convAssignLayerSpec(pNode);
-        	break;
+            convAssignLayerSpec(pNode);
+            break;
         case DRC_BOOLEAN_NOSNAP45:
         case DRC_CELL_TEXT:
         case DRC_EXCLUDE_FALSE_NOTCH:
@@ -187,16 +192,16 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
         case SNAP_OFFGRID:
         case FLATTEN_VERY_SMALL_CELLS:
         case LVS_NL_PIN_LOCATIONS:
-        	convYesNoSpec(pNode);
-        	break;
+            convYesNoSpec(pNode);
+            break;
         case LVS_ISOLATE_OPENS:
-        	convCustomizedSpec(pNode);
-        	break;
+            convCustomizedSpec(pNode);
+            break;
         case SOURCE_PATH:
         case SOURCE_PRIMARY:
         case SOURCE_SYSTEM:
-        	convSourceDbSpec(pNode);
-        	break;
+            convSourceDbSpec(pNode);
+            break;
         case TEXT_LAYER:
         case PORT_LAYER_POLYGON:
         case PORT_LAYER_TEXT:
@@ -211,15 +216,15 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
         case LAYOUT_WINDOW_LAYER:
         case DRC_PRINT_AREA:
         case DRC_PRINT_PERIMETER:
-        	convLayerListSpec(pNode);
-        	break;
+            convLayerListSpec(pNode);
+            break;
         case DEVICE:
-        	convDeviceSpec(pNode);
-        	break;
+            convDeviceSpec(pNode);
+            break;
         case DRC_CELL_NAME:
         case ERC_CELL_NAME:
-        	convCellNameSpec(pNode);
-        	break;
+            convCellNameSpec(pNode);
+            break;
         case DRC_SELECT_CHECK:
         case DRC_UNSELECT_CHECK:
         case DRC_SELECT_CHECK_BY_LAYER:
@@ -229,33 +234,33 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
         case ERC_UNSELECT_CHECK:
         case DFM_SELECT_CHECK:
         case DFM_UNSELECT_CHECK:
-        	convRuleSelectSpec(pNode);
-        	break;
+            convRuleSelectSpec(pNode);
+            break;
         case GROUP:
-        	convMakeRuleGroupSpec(pNode);
-        	break;
+            convMakeRuleGroupSpec(pNode);
+            break;
         case DRC_CHECK_MAP:
-        	convRuleMapSpec(pNode);
-        	break;
+            convRuleMapSpec(pNode);
+            break;
         case DRC_CHECK_TEXT:
         case ERC_CHECK_TEXT:
-        	convRuleTextSpec(pNode);
-        	break;
+            convRuleTextSpec(pNode);
+            break;
         case LAYER_MAP:
-        	convLayerMapSpec(pNode);
-        	break;
+            convLayerMapSpec(pNode);
+            break;
         case LVS_COMPARE_CASE:
-        	convCompareCaseSpec(pNode);
-        	break;
+            convCompareCaseSpec(pNode);
+            break;
         case LVS_WRITE_INJECTED_LAYOUT_NETLIST:
         case LVS_WRITE_INJECTED_SOURCE_NETLIST:
         case LVS_WRITE_LAYOUT_NETLIST:
         case LVS_WRITE_SOURCE_NETLIST:
-        	convNetListOutputSpec(pNode);
-        	break;
+            convNetListOutputSpec(pNode);
+            break;
         case TRACE_PROPERTY:
-        	convCheckPropertySpec(pNode);
-        	break;
+            convCheckPropertySpec(pNode);
+            break;
         case LVS_REDUCE_PARALLEL_BIPOLAR:
         case LVS_REDUCE_PARALLEL_CAPACITORS:
         case LVS_REDUCE_PARALLEL_DIODES:
@@ -265,87 +270,87 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
         case LVS_REDUCE_SERIES_CAPACITORS:
         case LVS_REDUCE_SERIES_MOS:
         case LVS_REDUCE_SERIES_RESISTORS:
-        	convReduceSpecificSpec(pNode);
-        	break;
+            convReduceSpecificSpec(pNode);
+            break;
         case LVS_REDUCE:
-        	convReduceGenericSpec(pNode);
-        	break;
+            convReduceGenericSpec(pNode);
+            break;
         case DRC_MAP_TEXT_DEPTH:
         case LAYOUT_DEPTH:
         case TEXT_DEPTH:
         case PORT_DEPTH:
         case VIRTUAL_CONNECT_DEPTH:
-        	convDepthSpec(pNode);
-        	break;
+            convDepthSpec(pNode);
+            break;
         case LAYOUT_PLACE_CELL:
-        	convUserDefDbSpec(pNode);
-        	break;
+            convUserDefDbSpec(pNode);
+            break;
         case VARIABLE:
-        	convVarSpec(pNode);
-        	break;
+            convVarSpec(pNode);
+            break;
         case POLYGON:
-        	convPolygonToLayerSpec(pNode);
-        	break;
+            convPolygonToLayerSpec(pNode);
+            break;
         case TEXT:
-        	convTextToLayerSpec(pNode);
-        	break;
+            convTextToLayerSpec(pNode);
+            break;
         case LVS_FILTER:
-        	convFilterSpec(pNode);
-        	break;
+            convFilterSpec(pNode);
+            break;
         case LVS_FILTER_UNUSED_OPTION:
-        	convFilterUnusedOptionSpec(pNode);
-        	break;
+            convFilterUnusedOptionSpec(pNode);
+            break;
         case LVS_MAP_DEVICE:
-        	convMapDeviceSpec(pNode);
-        	break;
+            convMapDeviceSpec(pNode);
+            break;
         case LVS_REDUCTION_PRIORITY:
-        	convReducePreferSpec(pNode);
-        	break;
+            convReducePreferSpec(pNode);
+            break;
         case LVS_PROPERTY_INITIALIZE:
-        	convInitialPropertySpec(pNode);
-        	break;
+            convInitialPropertySpec(pNode);
+            break;
         case LVS_PROPERTY_MAP:
-        	convMapPropertySpec(pNode);
-        	break;
+            convMapPropertySpec(pNode);
+            break;
         case LVS_PUSH_DEVICES:
         case LVS_PUSH_DEVICES_SEPARATE_PROPERTIES:
-        	convPushDeviceSpec(pNode);
-        	break;
+            convPushDeviceSpec(pNode);
+            break;
         case LVS_DEVICE_TYPE:
-        	convMapDeviceTypeSpec(pNode);
-        	break;
+            convMapDeviceTypeSpec(pNode);
+            break;
         case LVS_REDUCE_SPLIT_GATES:
-        	convReduceSplitGatesSpec(pNode);
-        	break;
+            convReduceSplitGatesSpec(pNode);
+            break;
         case LVS_SHORT_EQUIVALENT_NODES:
-        	convShortEquivalentNodesSpec(pNode);
-        	break;
+            convShortEquivalentNodesSpec(pNode);
+            break;
         case HCELL:
-        	convCorrespondingCellSpec(pNode);
-        	break;
+            convCorrespondingCellSpec(pNode);
+            break;
         case MASK_SVDB_DIRECTORY:
-        	convOutputLvsDBSpec(pNode);
-        	break;
+            convOutputLvsDBSpec(pNode);
+            break;
         case DRC_MAGNIFY_RESULTS:
         case DRC_MAGNIFY_DENSITY:
         case DRC_MAGNIFY_NAR:
-        	convOutputMagSpec(pNode);
-        	break;
+            convOutputMagSpec(pNode);
+            break;
         case DRC_RESULTS_DATABASE_LIBNAME:
-        	convDrcOutputLibSpec(pNode);
-        	break;
+            convDrcOutputLibSpec(pNode);
+            break;
         case DRC_RESULTS_DATABASE_PRECISION:
-        	convDrcOutPrecisionSpec(pNode);
-        	break;
+            convDrcOutPrecisionSpec(pNode);
+            break;
         case LVS_ISOLATE_SHORTS:
-        	convFindShortsSpec(pNode);
-        	break;
+            convFindShortsSpec(pNode);
+            break;
         case ERC_PATHCHK:
-        	convErcPathchkSpec(pNode);
-        	break;
+            convErcPathchkSpec(pNode);
+            break;
         case ERC_PATH_ALSO:
-        	convDeviceOnPathSpec(pNode);
-        	break;
+            convDeviceOnPathSpec(pNode);
+            break;
         case LAYOUT_PRESERVE_CELL_LIST:
         case DRC_ERROR_WAIVE_CELL:
         case EXCLUDE_CELL:
@@ -356,158 +361,188 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
         case LAYOUT_BASE_CELL:
         case LAYOUT_WINDEL_CELL:
         case LAYOUT_WINDOW_CELL:
-        	convCellListSpec(pNode);
-        	break;
+            convCellListSpec(pNode);
+            break;
         case TITLE:
-        	convFileHeadNameSpec(pNode);
-        	break;
+            convFileHeadNameSpec(pNode);
+            break;
         case LAYOUT_POLYGON:
-        	convPolygonToDBSpec(pNode);
-        	break;
+            convPolygonToDBSpec(pNode);
+            break;
         case LAYOUT_TEXT:
-        	convTextToDBSpec(pNode);
-        	break;
+            convTextToDBSpec(pNode);
+            break;
         case LAYOUT_TEXT_FILE:
             convLayoutTextFileSpec(pNode);
             break;
         case LAYOUT_CELL_LIST:
         case LVS_CELL_LIST:
-        	convCellListDefSpec(pNode);
-        	break;
+            convCellListDefSpec(pNode);
+            break;
         case LAYOUT_INPUT_EXCEPTION_RDB:
-        	convExceptionDBSpec(pNode);
-        	break;
+            convExceptionDBSpec(pNode);
+            break;
         case LAYOUT_INPUT_EXCEPTION_SEVERITY:
-        	convExceptionSeveritySpec(pNode);
-        	break;
+            convExceptionSeveritySpec(pNode);
+            break;
         case LAYOUT_WINDEL:
         case LAYOUT_WINDOW:
-        	convCoordListSpec(pNode);
-        	break;
+            convCoordListSpec(pNode);
+            break;
         case LAYOUT_MAGNIFY:
-        	convDBMagnifySpec(pNode);
-        	break;
+            convDBMagnifySpec(pNode);
+            break;
         case LAYOUT_MERGE_ON_INPUT:
-        	convertDBMergeOnInput(pNode);
-        	break;
+            convertDBMergeOnInput(pNode);
+            break;
         case LAYOUT_RENAME_TEXT:
         case LAYOUT_IGNORE_TEXT:
-        	convRenameTextSpec(pNode);
-        	break;
+            convRenameTextSpec(pNode);
+            break;
         case LAYER_RESOLUTION:
-        	convLayerResolutionSpec(pNode);
-        	break;
+            convLayerResolutionSpec(pNode);
+            break;
         case LAYOUT_RENAME_CELL:
-        	convRenameCellSpec(pNode);
-        	break;
+            convRenameCellSpec(pNode);
+            break;
         case LVS_BOX:
-        	convBlackBoxSpec(pNode);
-        	break;
+            convBlackBoxSpec(pNode);
+            break;
         case LVS_BLACK_BOX_PORT:
             convLvsBlackBoxPortSpec(pNode);
             break;
         case LVS_BLACK_BOX_PORT_DEPTH:
             convLvsBlackBoxPortDepthSpec(pNode);
             break;
+        case LVS_BOX_CUT_EXTENT:
+        	convLvsBoxCutExtentSpec(pNode);
+            break;
+        case LVS_BOX_PEEK_LAYER:
+        	convLvsBoxPeekLayerSpec(pNode);
+            break;
         case LVS_PROPERTY_RESOLUTION_MAXIMUM:
-        	convPropResolutionMaxSpec(pNode);
-        	break;
+            convPropResolutionMaxSpec(pNode);
+            break;
         case LVS_CPOINT:
-        	convInitialNetSpec(pNode);
-        	break;
+            convInitialNetSpec(pNode);
+            break;
         case VIRTUAL_CONNECT_BOX_NAME:
         case VIRTUAL_CONNECT_NAME:
         case LVS_EXCLUDE_HCELL:
         case LVS_GROUND_NAME:
         case LVS_POWER_NAME:
-        	convNameListSpec(pNode);
-        	break;
+            convNameListSpec(pNode);
+            break;
         case LVS_RECOGNIZE_GATES:
-        	convIdentifyGatesSpec(pNode);
-        	break;
+            convIdentifyGatesSpec(pNode);
+            break;
         case LVS_FLATTEN_INSIDE_CELL:
             convLVSFlattenInsideCell(pNode);
             break;
         case LVS_GLOBAL_LAYOUT_NAME:
-        	convGroupGlobalNameSpec(pNode);
-        	break;
+            convGroupGlobalNameSpec(pNode);
+            break;
         case LVS_NON_USER_NAME_INSTANCE:
         case LVS_NON_USER_NAME_NET:
         case LVS_NON_USER_NAME_PORT:
-        	convNonMatchNameSpec(pNode);
-        	break;
+            convNonMatchNameSpec(pNode);
+            break;
         case LVS_REPORT_OPTION:
-        	convLvsReportOptionSpec(pNode);
-        	break;
+            convLvsReportOptionSpec(pNode);
+            break;
         case FLAG_ACUTE:
         case FLAG_ANGLED:
         case FLAG_NONSIMPLE:
         case FLAG_NONSIMPLE_PATH:
         case FLAG_OFFGRID:
         case FLAG_SKEW:
-        	convCheckSpec(pNode);
-        	break;
+            convCheckSpec(pNode);
+            break;
         case SVRF_MESSAGE:
-        	convPutsSpec(pNode);
-        	break;
+            convPutsSpec(pNode);
+            break;
         case EXPAND_CELL_TEXT:
-        	convExpandTextInCellSpec(pNode);
-        	break;
+            convExpandTextInCellSpec(pNode);
+            break;
         case SVRF_ERROR:
-        	convErrorSpec(pNode);
-        	break;
+            convErrorSpec(pNode);
+            break;
         case LVS_SPICE_OPTION:
         case LVS_SPICE_SCALE_X_PARAMETERS:
         case LVS_SPICE_MULTIPLIER_NAME:
-        	convSpiceOptionSpec(pNode);
-        	break;
+            convSpiceOptionSpec(pNode);
+            break;
         case LVS_SPICE_RENAME_PARAMETER:
-        	convRenameSpiceParameterSpec(pNode);
-        	break;
+            convRenameSpiceParameterSpec(pNode);
+            break;
         case LVS_SOFTCHK:
-        	convSconnectCheckSpec(pNode);
-        	break;
+            convSconnectCheckSpec(pNode);
+            break;
         case LVS_SOFTCHK_MAXIMUM_RESULTS:
         case VIRTUAL_CONNECT_REPORT_MAXIMUM:
-        	convSoftChkMaxResSpec(pNode);
-        	break;
+            convSoftChkMaxResSpec(pNode);
+            break;
         case UNIT_CAPACITANCE:
         case UNIT_RESISTANCE:
         case UNIT_INDUCTANCE:
         case UNIT_LENGTH:
         case UNIT_TIME:
-        	convUnitOptionSpec(pNode);
-        	break;
+            convUnitOptionSpec(pNode);
+            break;
         case SVRF_VERSION:
         case LVS_SIGNATURE_MAXIMUM:
         case MASK_RESULTS_DATABASE:
-        	
-        	break;
+
+            break;
         case LVS_ISOLATE_SHORTS_IGNORE_NETS:
         case LVS_ISOLATE_OPENS_NETS:
         case LVS_ISOLATE_OPENS_IGNORE_NETS:
-        	convOldIsolateNetSpec(pNode);
-        	break;
+            convOldIsolateNetSpec(pNode);
+            break;
         case DEVICE_GROUP:
             covDeviceGroupSpec(pNode);
             break;
         case TVF_FUNCTION:
-        	convTvfFuncSpec(pNode);
-        	break;
+            convTvfFuncSpec(pNode);
+            break;
         case LVS_SPLIT_GATE_RATIO:
             convLvsSplitGateRatio(pNode);
             break;
         case DRC_MAP_TEXT_LAYER:
-        	convDrcMapTextLayer(pNode);
-        	break;
+            convDrcMapTextLayer(pNode);
+            break;
         case DFM_FUNCTION:
-        	convDfmFunction(pNode);
-        	break;
+            convDfmFunction(pNode);
+            break;
         case LAYOUT_CLONE_ROTATED_PLACEMENTS:
             convLayoutCloneRotatedPlacements(pNode);
             break;
         case LAYOUT_CLONE_TRANSFORMED_PLACEMENTS:
             convLayoutCloneTransformedPlacements(pNode);
+            break;
+        case LVS_NETLIST_PROPERTY:
+            convLvsNetlistProperty(pNode);
+            break;
+        case LVS_AUTO_EXPAND_HCELL:
+            convLvsAutoExpandHcell(pNode);
+            break;
+        case DFM_DEFAULTS_RDB:
+            convDFMDefaultsRDB(pNode);
+            break;
+        case ERC_TVF:
+        case DFM_SPEC_FILL_SHAPE:
+        case DFM_SPEC_SPACE:
+        case DFM_SPEC_FILL_GUIDE:
+        case DFM_SPEC_FILL_OPTIMIZER:
+        case DFM_SPEC_FILL_REGION:
+        case DFM_SPEC_FILL:
+        case DFM_SPEC_FILL_WRAP:
+        case DFM_DEFAULTS_FILL:
+        case LVS_PATHCHK_MAXIMUM_RESULTS:
+            convCommonNode(pNode->getSpecificationType(), pNode);
+            break;
+        case LITHO_FILE:
+            parseLithoFileSpec(pNode);
             break;
         case PORT_LAYER_MERGED_POLYGON:
         case LVS_NETLIST_CONNECT_PORT_NAMES:
@@ -519,18 +554,15 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
 
         case DFM_DATABASE:
         case DFM_DATABASE_DIRECTORY:
-        case DFM_DEFAULTS_RDB:
         case DFM_SPEC_SPATIAL_SAMPLE:
         case DFM_SPEC_VIA_REDUNDANCY:
         case DFM_SPEC_VIA:
         case DFM_SPEC_RANDOM_SPOT_FAULT:
         case DFM_ASSERT:
-        case DFM_SPEC_FILL:
         case DFM_YS_AUTOSTART:
         case LVS_PIN_NAME_PROPERTY:
         case LVS_COMPONENT_SUBTYPE_PROPERTY:
         case LVS_COMPONENT_TYPE_PROPERTY:
-        case LVS_AUTO_EXPAND_HCELL:
         case LVS_CENTER_DEVICE_PINS:
         case LVS_MOS_SWAPPABLE_PROPERTIES:
         case LVS_ANNOTATE_DEVICES:
@@ -544,6 +576,8 @@ void rcsSynPvrsConvertor::beginVisitSpecificationNode(rcsSynSpecificationNode_T 
         case DRC_PRINT_EXTENT:
         case NON_SUPPORT_SPECIFICATION:
         case LAYOUT_ULTRA_FLEX:
+        //add lvs_netlist_unnamed_isolated_nets support
+        case LVS_NETLIST_UNNAMED_ISOLATED_NETS:
         default:
         {
             std::string sValue;
@@ -572,23 +606,23 @@ rcsSynPvrsConvertor::beginVisitProcNode(rcsSynProcNode_T *pNode)
 
     outputBlankLinesBefore(pNode->getNodeBeginLineNo());
 
-	std::list<rcsToken_T>::iterator iter = pNode->begin();
-	if (iter->eType == DMACRO)
-	{
-		++iter;
-		std::string sMacroName;
-		getStringName(iter, pNode->end(), sMacroName);
-		++iter;
-		(*m_oPVRSStream) << "define_fun " << sMacroName << " ";
-		while (iter != pNode->end() && iter->sValue != "{")
-		{
-		    std::string sParaName;
-		    getStringName(iter, pNode->end(), sParaName);
-			(*m_oPVRSStream) << sParaName << " ";
-			++iter;
-		}
-		(*m_oPVRSStream) << "{" << std::endl;
-	}
+    std::list<rcsToken_T>::iterator iter = pNode->begin();
+    if (iter->eType == DMACRO)
+    {
+        ++iter;
+        std::string sMacroName;
+        getStringName(iter, pNode->end(), sMacroName);
+        ++iter;
+        (*m_oPVRSStream) << "define_fun " << sMacroName << " ";
+        while (iter != pNode->end() && iter->sValue != "{")
+        {
+            std::string sParaName;
+            getStringName(iter, pNode->end(), sParaName);
+            (*m_oPVRSStream) << sParaName << " ";
+            ++iter;
+        }
+        (*m_oPVRSStream) << "{" << std::endl;
+    }
 
 }
 
@@ -598,7 +632,7 @@ rcsSynPvrsConvertor::endVisitProcNode(rcsSynProcNode_T *pNode)
     if(!m_hasGetTmpLayerValue)
         return;
 
-	(*m_oPVRSStream) << "}" << std::endl;
+    (*m_oPVRSStream) << "}" << std::endl;
 }
 
 void
@@ -612,13 +646,13 @@ rcsSynPvrsConvertor::beginVisitPreProcessNode(rcsSynPreProcessNode_T *pNode)
     std::string sCmdValue;
     std::list<rcsToken_T>::iterator iter = pNode->begin();
     if(rcsManager_T::getInstance()->isConvertIncludeFile() && 
-		strcasecmp("INCLUDE", iter->sValue.c_str()) == 0 && (++iter)->eType == STRING_CONSTANTS)
+        strcasecmp("INCLUDE", iter->sValue.c_str()) == 0 && (++iter)->eType == STRING_CONSTANTS)
     {
-    	sCmdValue = "include (\"" + iter->sValue + "\")";
+        sCmdValue = "include (\"" + iter->sValue + "\")";
     }
     else
     {
-    	pNode->getCmdValue(sCmdValue);
+        pNode->getCmdValue(sCmdValue);
     }
     (*m_oPVRSStream) << sCmdValue << std::endl;
 }

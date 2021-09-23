@@ -28,8 +28,10 @@
 #include "main/rcsSvrf2Pvrs.h"
 #include "public/synnode/rcssyndmacrodummynode.h"
 
-rcsSynConvertor::rcsSynConvertor(std::list<rcsToken_T> &lTokenStream):
+rcsSynConvertor::rcsSynConvertor(std::list<rcsToken_T> &lTokenStream, bool bTvfConvertor):
                  m_listTokenStream(lTokenStream)
+               ,m_pMacroParasMap(NULL)
+               ,m_bTvfConvertor(bTvfConvertor)
 {
 }
 
@@ -116,6 +118,11 @@ rcsSynConvertor::parseLayerOperation(std::list<rcsToken_T>::iterator &iter)
             {
                 break;
             }
+        }
+        else if(BUILT_IN_LANG == iter->eType && m_bTvfConvertor)
+        {
+        	(iter->sValue).insert(0,"\\");
+        	(iter->sValue).insert((iter->sValue).size()-1,"\\");
         }
         ++iter;
     }
@@ -350,6 +357,11 @@ rcsSynConvertor::parseRuleCheck(Node_Type *pNode, std::list<rcsToken_T>::iterato
                     }
                     iterBegin = iter;
 
+                    std::map<std::string, rcsSynLayerDefinitionNode_T*>& _tmpLayers = rcsManager_T::getInstance()->getTmpLayers();
+                    if( (pLayerDefinitionNode != NULL) && (_tmpLayers.find(iLayerDefBegin->sValue) != _tmpLayers.end()) )
+                    {
+                    	_tmpLayers[iLayerDefBegin->sValue] = pLayerDefinitionNode;
+                    }
                     continue;
                 }
                 else if("}" == iter->sValue)
@@ -476,6 +488,9 @@ rcsSynConvertor::parseImplicitLayerDefinition(std::list<rcsToken_T>::iterator &i
 
                     hvUInt32 nLineNo = iterBegin->nLineNo;  
                     
+                    std::map<std::string, rcsSynLayerDefinitionNode_T*>& _tmpLayers = rcsManager_T::getInstance()->getTmpLayers();
+                    _tmpLayers[sTmpName] = NULL;
+
                     m_listTokenStream.insert(iterInsert, rcsToken_T(IDENTIFIER_NAME,
                                              nLineNo, sTmpName.c_str()));
                     
@@ -643,12 +658,47 @@ rcsSynConvertor::checkDefinedNameValid()
     }
 }
 
+/*
+ * cmacro pro layer1  1  -2  lex to  cmacro pro layer1 1 -  2
+ * the -2 become two token, so args number may be more
+*/
+static std::list<rcsToken_T>::iterator
+_cmacro_advance(std::list<rcsToken_T>::iterator iter, std::list<rcsToken_T>::iterator end, int n)
+{
+    while (n-- > 0 && iter != end)
+    {
+        ++iter;
+        if (iter->eType == OPERATOR && (iter->sValue == "+" || iter->sValue == "-"))
+        {
+            std::list<rcsToken_T>::iterator next = iter;
+            ++next;
+            if ( next != end && next->eType == NUMBER)
+            {
+                ++n;
+            }
+        }
+    }
+
+    return iter;
+}
+
+static void
+addUnknowNode(std::list<rcsToken_T>::iterator &beg, std::list<rcsToken_T>::iterator &end, rcsSynRootNode_T *pRoot)
+{
+    rcsSynSwitchUnKnowNode_T *pUn = new rcsSynSwitchUnKnowNode_T;
+    pUn->insertTokens(beg, end);
+    pRoot->addChildNodes(pUn);
+    beg = end;
+}
+
 rcsSynRootNode_T *
 rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLinesBefore)
 {
+    std::map<std::string, rcsSynLayerDefinitionNode_T*>& _tmpLayers = rcsManager_T::getInstance()->getTmpLayers();
+    _tmpLayers.clear();
+
 	checkDefinedNameValid();
     recognizeImplicitLayerDefinitions();
-
 #ifdef __DEBUG__
     std::cout << "---------------- AFTER RECOGNIZING IMPLICIT LAYER DEFINITIONS -------------" << std::endl;
     printTokenStream(m_listTokenStream.begin(), m_listTokenStream.end());
@@ -670,7 +720,33 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
                         new rcsSynLayerOperationNode_T(iter->eKeyType, iter->eType == CMACRO);
                 if(parseLayerOperation(iter))
                 {
-                    pLayerOperationNode->insertTokens(iterBegin, iter);
+                    std::list<rcsToken_T>::iterator lastEnd = iter;
+                    bool needHandleCMACROWithFullConvert = pLayerOperationNode->isCMacro() && m_pMacroParasMap != NULL;
+                    if (needHandleCMACROWithFullConvert)
+                    {
+                        int allsize = std::distance(iterBegin, iter);
+                        if (allsize >= 2) // 2 is "CMACRO" and "macroName"
+                        {
+                            std::list<rcsToken_T>::iterator macroIter = iterBegin;
+                            macroIter++;
+                            std::string macroName = macroIter->sValue;
+                            toLower(macroName);
+                            std::map<std::string, hvUInt32>::const_iterator mIt = m_pMacroParasMap->find(macroName);
+                            if (mIt != m_pMacroParasMap->end())
+                            {
+                                hvUInt32 psize = mIt->second;
+                                int macroRealSize = psize + 2;
+                                if (allsize > macroRealSize && pRootNode->refLastNodeForCMacro() != NULL)
+                                {
+                                    std::list<rcsToken_T>::iterator firstArgs = macroIter;
+                                    ++firstArgs;
+                                    lastEnd = _cmacro_advance(firstArgs, iter, psize);
+                                    pRootNode->refLastNodeForCMacro()->appendTokenForCMacro(lastEnd, iter);
+                                }
+                            }
+                        }
+                    }
+                    pLayerOperationNode->insertTokens(iterBegin, lastEnd);
                     pRootNode->addChildNodes(pLayerOperationNode);
                 }
                 else
@@ -687,10 +763,12 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
                 std::list<rcsToken_T>::iterator begin = iter;
                 if(iterBegin != begin)
                 {
-                    
+#if 0
                 	rcsSvrf2Pvrs::setCurLineNo(iterBegin->nLineNo);
                     s_errManager.addError(rcErrorNode_T(rcErrorNode_T::ERROR, SYN1,
                     		iterBegin->nLineNo));
+#endif
+                    addUnknowNode(iterBegin, begin, pRootNode);
                 }
                 while(iter != m_listTokenStream.end())
                 {
@@ -710,11 +788,13 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
             {
                 if(iterBegin != iter)
                 {
-                    
+#if 0
                 	rcsSvrf2Pvrs::setCurLineNo(iterBegin->nLineNo);
                     s_errManager.addError(rcErrorNode_T(rcErrorNode_T::ERROR, SYN1,
                     		iterBegin->nLineNo));
                     iterBegin = iter;
+#endif
+                    addUnknowNode(iterBegin, iter, pRootNode);
                 }
                 rcsSynSpecificationNode_T *pNode = new rcsSynSpecificationNode_T(iter->eKeyType);
 
@@ -754,10 +834,12 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
                     --iRuleCheckBegin;
                     if(iterBegin != iRuleCheckBegin)
                     {
-                        
+#if 0
                     	rcsSvrf2Pvrs::setCurLineNo(iterBegin->nLineNo);
                         s_errManager.addError(rcErrorNode_T(rcErrorNode_T::ERROR, SYN1,
                         		iterBegin->nLineNo));
+#endif
+                        addUnknowNode(iterBegin, iRuleCheckBegin, pRootNode);
                     }
                     rcsSynRuleCheckNode_T *pRuleCheckNode = new rcsSynRuleCheckNode_T();
                     parseRuleCheck(pRuleCheckNode, iter);
@@ -775,10 +857,12 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
                     --iLayerDefBegin;
                     if(iterBegin != iLayerDefBegin)
                     {
-                        
+#if 0
                     	rcsSvrf2Pvrs::setCurLineNo(iterBegin->nLineNo);
                         s_errManager.addError(rcErrorNode_T(rcErrorNode_T::ERROR, SYN1,
                         		iterBegin->nLineNo));
+#endif
+                        addUnknowNode(iterBegin, iLayerDefBegin, pRootNode);
                     }
                     rcsSynLayerDefinitionNode_T *pLayerDefinitionNode = new rcsSynLayerDefinitionNode_T();
                     pLayerDefinitionNode->insertTokens(iLayerDefBegin, iter);
@@ -793,6 +877,12 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
                     }
                     iterBegin = iter;
 
+                    std::map<std::string, rcsSynLayerDefinitionNode_T*>& _tmpLayers = rcsManager_T::getInstance()->getTmpLayers();
+                    if( (pLayerDefinitionNode != NULL) && (_tmpLayers.find(iLayerDefBegin->sValue) != _tmpLayers.end()) )
+                    {
+                    	_tmpLayers[iLayerDefBegin->sValue] = pLayerDefinitionNode;
+                    }
+
                     continue;
                 }
                 break;
@@ -801,10 +891,12 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
             {
                 if(iterBegin != iter)
                 {
-                    
+#if 0
                 	rcsSvrf2Pvrs::setCurLineNo(iterBegin->nLineNo);
                     s_errManager.addError(rcErrorNode_T(rcErrorNode_T::ERROR, SYN1,
                     		iterBegin->nLineNo));
+#endif
+                    addUnknowNode(iterBegin, iter, pRootNode);
                 }
 
                 std::list<rcsToken_T>::iterator begin = iter;
@@ -855,6 +947,10 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
         iter++;
     }
 
+    if (iterBegin != iter)
+    {
+        addUnknowNode(iterBegin, iter, pRootNode);
+    }
 
 
 
@@ -869,7 +965,7 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
 
     if(rcsManager_T::getInstance()->isNewPvrs())
     {
-        rcsSynPvrsConvertor pvrsConvertor(blankLinesBefore);
+        rcsSynPvrsConvertor pvrsConvertor(blankLinesBefore,m_bTvfConvertor);
         if(rcsManager_T::getInstance()->hasTmpLayerDefinition() &&
            !rcsManager_T::getInstance()->needExpandTmpLayer())
         {
@@ -878,6 +974,7 @@ rcsSynConvertor::execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLi
 
         pvrsConvertor.setHasGetTmpLayerValues();
         pRootNode->accept(pvrsConvertor);
+        pvrsConvertor.closeDebugFile();
     }
     else
     {

@@ -14,6 +14,7 @@ class rcsSynProcNode_T;
 class rcsSynCommentNode_T;
 class rcsSynBuildInNode_T;
 class rcsSynDMACRODummyNode_T;
+class rcsSynSwitchUnKnowNode_T;
 
 
 class rcsNodeVisitor_T
@@ -37,6 +38,8 @@ public:
     virtual void endVisitProcNode(rcsSynProcNode_T *pNode) {}
     virtual void beginVisitDMACRODummyNode(rcsSynDMACRODummyNode_T *pNode) {}
     virtual void endVisitDMACRODummyNode(rcsSynDMACRODummyNode_T *pNode) {}
+    virtual void beginVisitSwitchUnknowNode(rcsSynSwitchUnKnowNode_T *pNode) {}
+    virtual void endVisitSwitchUnknowNode(rcsSynSwitchUnKnowNode_T *pNode) {}
 };
 
 #endif 

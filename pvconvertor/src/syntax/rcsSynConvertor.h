@@ -19,8 +19,8 @@ class rcsSynNodeConvertor_T;
 class rcsSynConvertor
 {
 public:
-    rcsSynConvertor(std::list<rcsToken_T> &lTokenStream);
-
+    rcsSynConvertor(std::list<rcsToken_T> &lTokenStream, bool bTvfConvertor = false);
+    void setMacroParaMap(const std::map<std::string, hvUInt32> *pMap) { m_pMacroParasMap = pMap; }
     rcsSynRootNode_T *execute(std::map<hvUInt32, std::pair<hvUInt32, bool> > &blankLinesBefore);
 
 #ifdef DEBUG
@@ -48,6 +48,8 @@ private:
 
 private:
     std::list<rcsToken_T> &m_listTokenStream;
+    const std::map<std::string, hvUInt32> *m_pMacroParasMap;
+    bool m_bTvfConvertor;
 };
 
 #endif 

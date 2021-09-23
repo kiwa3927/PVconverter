@@ -2,16 +2,28 @@
 #define RCSSVRF2PVRS_H_
 
 #include <string>
+#include "public/token/rcsToken.h"
 
 class rcsPreProcessor_T;
 
 class rcsSvrf2Pvrs
 {
 public:
+    rcsSvrf2Pvrs() : m_lastGlobalLine(0) {}
+    void setLastGlobalLine(hvUInt32 n) { m_lastGlobalLine = n; }
+    hvUInt32 getLastGlobalLine() const { return m_lastGlobalLine; }
+    void transGlobalLineForIncFile(std::list<rcsToken_T> &tokens) const
+    {
+        if (getLastGlobalLine() != 0)
+        {
+            for (auto &t : tokens)
+                t.nLineNo += this->getLastGlobalLine();
+        }
+    }
     ~rcsSvrf2Pvrs();
     static bool isTVFRule(const char* pFilename, bool* isTVF = NULL, bool* isTRS = NULL);
 
-    static bool execute(std::string sInFile, const std::string &sSwitchFile,
+    bool execute(std::string sInFile, const std::string &sSwitchFile,
                         const std::string &sOutFile,
                         bool outSvrf, bool convertSwitch, bool flattenMacro,
                         bool outComment, std::ostream &out,
@@ -33,11 +45,12 @@ public:
     static void setCompleteStr(std::string& str);
     static void setStrSearchBegin(hvUInt32 pos = 0);
     static hvUInt32 findLineNumInTvfFun(std::string command);
-
 private:
     static hvUInt32 mCurLineNo;
     static hvUInt32 mStrSearchBegin;
     static std::string mCompleteStr;
+
+    hvUInt32 m_lastGlobalLine; // only for -oi option
 };
 
 #ifdef DEBUG

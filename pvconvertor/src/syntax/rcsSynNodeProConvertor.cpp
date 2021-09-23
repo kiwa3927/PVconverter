@@ -1106,6 +1106,8 @@ void rcsSynNodeProConvertor_T::beginVisitSpecificationNode(rcsSynSpecificationNo
         case CAPACITANCE_CMD:
         case RESISTANCE_CMD:
         case NON_SUPPORT_SPECIFICATION:
+        //add lvs_netlist_unnamed_isolated_nets support
+        case LVS_NETLIST_UNNAMED_ISOLATED_NETS:
         default:
         {
             std::string sValue;
@@ -1266,6 +1268,7 @@ rcsSynNodeProConvertor_T::beginVisitLayerOperationNode(rcsSynLayerOperationNode_
         case SHRINK:
         case MAGNIFY:
         case ROTATE:
+        case DFM_SHIFT:
         case SHIFT:
             convertGeomTransformCmd(pNode);
             break;
@@ -1385,8 +1388,10 @@ rcsSynNodeProConvertor_T::beginVisitLayerOperationNode(rcsSynLayerOperationNode_
             convertDfmNARACCmd(pNode);
             break;
         case DFM_RDB:
+#if 0
         case DFM_RDB_GDS:
         case DFM_RDB_OASIS:
+#endif
             convertDfmRDBCmd(pNode);
             break;
         case DFM_STAMP:

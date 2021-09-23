@@ -176,8 +176,8 @@ std::string rcsCommentUtil::replaceKeyword(const std::vector<rcsToken_T> &tokens
         case EXTENT_CELL: writer << "geom_get_cell_boundary"; break;
         case EXTENT_DRAWN: writer << "geom_get_layout_boundary"; break;
         case EXTERNAL:   { writer << "ext"; }    break;
-        case FLAG_NONSIMPLE: writer << "print_log nonsimple_polygon"; break;
-        case FLAG_NONSIMPLE_PATH: writer << "print_log nonsimple_path"; break;
+        case FLAG_NONSIMPLE: writer << "print_log self_intersecting_polygon"; break;
+        case FLAG_NONSIMPLE_PATH: writer << "print_log self_intersecting_path "; break;
         case FLATTEN:   { writer << "geom_flatten"; }    break;
         case FLATTEN_CELL: writer << "flatten cell"; break;
         case FLATTEN_INSIDE_CELL: writer << "flatten in_cell"; break;
@@ -224,7 +224,7 @@ std::string rcsCommentUtil::replaceKeyword(const std::vector<rcsToken_T> &tokens
         case LAYOUT_SYSTEM: writer << "layout_input format"; break;
         case LAYOUT_SYSTEM2: writer << "layout_input2 format"; break;
         case LAYOUT_TEXT: writer << "layout_add_text"; break;
-        case LAYOUT_TOP_LAYER: writer << "layout_connect_layer"; break;
+        case LAYOUT_TOP_LAYER: writer << "layout_metal_layer"; break;
         case LAYOUT_USE_DATABASE_PRECISION: writer << "layout_use_db_precision"; break;
         case LAYOUT_WINDEL: writer << "layout_exclude_window region"; break;
         case LAYOUT_WINDEL_CELL: writer << "layout_exclude_window cell"; break;
@@ -673,6 +673,9 @@ bool rcsCommentUtil::getCommentContent(const std::string &comment, std::string::
 
         return false;
     }
+    // -Werror=return type
+    Utassert(false);
+    return false;
 }
 
 bool rcsCommentUtil::replaceBlockComment(const std::string &comment, std::string &newStr)

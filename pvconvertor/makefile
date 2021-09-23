@@ -1,6 +1,7 @@
 # envs  
 PLATFORM= "$(shell ./config/guess-platform)"
 PROCESSOR= "$(shell ./config/GuessPlatform -processor)"
+_COMPILE_JOBS = $(shell grep processor /proc/cpuinfo | wc -l)
 
 # LINUX: fedora3-linux26-athlon, fedora4-linux26-i686, fedora5-linux26-athlon,
 #		 fedora6-linux26-i686, fedora7-linux26-i686, linux24, redhat8, redhat9,
@@ -60,7 +61,7 @@ endif
 
 SHARE_DIR=""$(shell pwd)"/share"
 SHARE_INC="-isystem$(SHARE_DIR)/include" "-I/usr/X11R6/include"
-SHARE_LIB="-L$(SHARE_DIR)/$(PLATFORM)/lib" "$(SHARE_DIR)/$(PLATFORM)/lib/libtcl8.5.a" "-lX11" "-lXft" "-lpthread" "-lfontconfig" "$(SHARE_DIR)/$(PLATFORM)/lib/libtk8.5.a"  
+SHARE_LIB="-L$(SHARE_DIR)/$(PLATFORM)/lib" "$(SHARE_DIR)/$(PLATFORM)/lib/libtcl8.5.a" "-ldl" "-lX11" "-lXft" "-lpthread" "-lfontconfig" "$(SHARE_DIR)/$(PLATFORM)/lib/libtk8.5.a"  
 
 time:
 	@echo ----------------------------------------------
@@ -106,7 +107,7 @@ project:
 		fi; \
 		echo "Making $(WHAT), please wait ... "; \
 		cd ./src; \
-		time -p make all \
+		time -p make -j$(_COMPILE_JOBS) all \
 			WHAT="$(WHAT)" TARGET_NAME="$(TARGET_NAME)"\
 			SOURCE_ROOT="$(_SOURCE_ROOT)" \
 			CFLAGS="$(CFLAGS)" \

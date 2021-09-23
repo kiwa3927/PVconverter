@@ -122,6 +122,108 @@ rcsExpressionParser_T::term(std::list<rcsToken_T>::iterator &iter, std::list<rcs
 }
 
 bool
+rcsExpressionParser_T::isFuncName(const std::string &funcName)
+{
+    //toUpper(str);
+    // to check
+    if (0 == strcasecmp(funcName.c_str(), "CEIL"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "FLOOR"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "TRUNC"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "SQRT"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "ABS"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "EXP"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "LOG"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "SIN"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "COS"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "TAN"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "MIN"))
+    {
+        return true;
+    }
+    else if (0 == strcasecmp(funcName.c_str(), "MAX"))
+    {
+        return true;
+    }
+    return false;
+}
+
+bool
+rcsExpressionParser_T::parseFunc(std::list<rcsToken_T>::iterator &iter, std::list<rcsToken_T>::iterator end, std::string &sNumExpr)
+{
+    // get func name
+    sNumExpr += iter->sValue;
+    //sNumExpr += " ";
+
+    // skip and check end
+    if (++iter == end)
+        return false;
+
+    // check (
+    if (iter->eType != SEPARATOR || iter->sValue != "(")
+        return false;
+
+    // get (
+    sNumExpr += "( ";
+
+    // skip (
+    ++iter;
+    while (iter != end)
+    {
+        if(false == exp(iter, end, sNumExpr))
+            return false;
+
+        if (iter != end && iter->eType == SEPARATOR && iter->sValue == ",")
+        {
+            sNumExpr += ", ";;
+            ++iter;
+            continue;
+        }
+        break;
+    }
+
+    // check )
+    if (iter == end || iter->eType != SEPARATOR || iter->sValue != ")")
+        return false;
+
+    // get )
+    sNumExpr += ") ";;
+
+    // next
+    ++iter;
+    return true;
+}
+
+bool
 rcsExpressionParser_T::factor(std::list<rcsToken_T>::iterator &iter, std::list<rcsToken_T>::iterator end, std::string &sNumExpr)
 {
     if(iter == end)
@@ -180,6 +282,11 @@ rcsExpressionParser_T::factor(std::list<rcsToken_T>::iterator &iter, std::list<r
         case IDENTIFIER_NAME:
         case SECONDARY_KEYWORD:
         {
+            // to check func
+            if (isFuncName(iter->sValue))
+            {
+                return parseFunc(iter, end, sNumExpr);
+            }
             if(!isValidSvrfName(iter->sValue))
                 return false;
         }

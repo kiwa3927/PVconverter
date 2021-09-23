@@ -27,11 +27,11 @@ class rcsTVFCompiler_T
     };
 
 public:
-    rcsTVFCompiler_T(char* pInputFile,char* pOutSvrfFile = NULL,char* ptvfarg = NULL);
+    rcsTVFCompiler_T(const std::string& pInputFile, const std::string& pOutSvrfFile = "", const std::string& ptvfarg = "");
     ~rcsTVFCompiler_T();
 
     int   tvf_compiler();
-    static char* getsvrffilename();
+    static const char* getsvrffilename();
 
 private:
     
@@ -115,14 +115,21 @@ private:
     static int build_nlayer_concat_vectors_string_proc(ClientData d, Tcl_Interp *interp,
                                                        int argc, const char * argv[]);
 
+    static int device_n20_measurements_proc(ClientData d, Tcl_Interp *interp,
+                                                       int argc, const char * argv[]);
+    static int multi_layer_measurements_proc(ClientData d, Tcl_Interp *interp,
+                                             int argc, const char * argv[]);
+    static int cpo_measurements_proc(ClientData d, Tcl_Interp *interp,
+                                             int argc, const char * argv[]);
+
     static void freeResult(char *pValue);
 
 private:
     static bool          m_isInRulecheck;
     static std::ofstream m_fSvrf;
-    static char*         m_pTvfArg;
-    static char*         m_pTvfFilename;
-    static char*         m_pSvrfFileName;
+    static std::string   m_pTvfArg;
+    static std::string   m_pTvfFilename;
+    static std::string   m_pSvrfFileName;
     static Tcl_Interp*   m_pInterp;
 
     static std::map<std::string, std::string, LTstr> layermap_g;
